@@ -1,0 +1,22 @@
+{
+  "name": "exam-ai-frontend",
+  "version": "1.0.0",
+  "description": "AI-Powered Mock Test & Practice Platform - Frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "qrcode": "^1.5.4",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,15 @@
+# Supabase Postgres via IPv4 transaction pooler (required: sandbox has no IPv6 route)
+DATABASE_URL=postgresql://postgres.kyxwngsdpooqywsgqfeg:pBjhNre2lF20fljL@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+PGSSL=false
+PGPOOL_MAX=10
+
+# Upstash Redis (REST). Set REST_TOKEN to enable the Upstash cache; without it
+# the app transparently falls back to an in-process TTL cache.
+UPSTASH_REDIS_REST_URL=https://loving-satyr-186278.upstash.io
+UPSTASH_REDIS_REST_TOKEN=gQAAAAAAAtemAAIgcDE4NDYxOWFmYzg5NGI0ZTNjOWQ1MWFhNmMyN2UyZDFlOQ
+
+# JWT signing secret (change in production)
+JWT_SECRET=examai-super-secret-change-me
+
+# Backend port
+PORT=3001

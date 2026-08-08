@@ -1,0 +1,30 @@
+{
+  "name": "ExamAI — AI-Powered Test Practice",
+  "short_name": "ExamAI",
+  "description": "AI-Powered Mock Test & Practice Platform for NEET, JEE, UPSC, SSC, Banking, CAT, GATE, CUET and more.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f1a",
+  "theme_color": "#0b0f1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Take a Mock Test",
+      "url": "/tests",
+      "description": "Start a mock test"
+    },
+    {
+      "name": "Practice",
+      "url": "/practice",
+      "description": "Chapter and topic-wise practice"
+    }
+  ]
+}
