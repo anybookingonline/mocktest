@@ -7,9 +7,10 @@ const BACKEND_PORT = process.env.BACKEND_PORT || 3001
 export default defineConfig({
   plugins: [react()],
   build: {
-    // Emit dist/ at the repo root (where the backend serves it from and where
-    // static hosting expects it) instead of frontend/dist
-    outDir: '../dist',
+    // Freebuff single-service deploy: backend serves repo-root dist/ (SPA
+    // fallback). On Vercel the project root is frontend/ and Vercel cannot
+    // collect build output outside it — so emit inside the project there.
+    outDir: process.env.VERCEL ? 'dist' : '../dist',
     emptyOutDir: true
   },
   server: {
