@@ -36,13 +36,32 @@ export default function TestSession() {
     (async () => {
       try {
         const ids = searchParams.get('ids')
+        const attemptParam = searchParams.get('attempt')
         let t = null
         let a
         let qs = []
-        if (ids) {
-          qs = ids.split(',').map(Number).filter(Boolean)
-          a = await api.post('/attempts', { questionIds: qs, title: 'Bookmarked Questions', kind: 'revision' })
-          t = { id: a.attemptId, title: 'Bookmarked Questions', config: {} }
+        if (ids || attemptParam) {
+          // Bookmarks flow (ids=…) creates a fresh attempt; revision flow
+          // (attempt=…) resumes the already-created attempt. Either way the
+          // session needs FULL question objects — fetch them from the attempt.
+          if (ids) {
+            const qids = ids.split(',').map(Number).filter(Boolean)
+            a = await api.post('/attempts', { questionIds: qids, title: 'Bookmarked Questions', kind: 'revision' })
+          } else {
+            a = { attemptId: Number(attemptParam) }
+          }
+          const full = await api.get(`/attempts/${a.attemptId}`)
+          t = { id: full.attempt.id, title: full.attempt.title, config: {} }
+          qs = full.questions || []
+          setAttemptId(full.attempt.id)
+          const limit0 = full.attempt.time_limit_seconds || (qs.length ? qs.reduce((s, x) => s + (x.estimated_time || 90), 0) : 1800)
+          const used = Math.max(0, Number(full.attempt.duration_seconds) || 0)
+          setTest(t); setQuestions(qs)
+          timeLimitRef.current = limit0
+          setRemaining(Math.max(60, limit0 - used))
+          setRunning(true)
+          qStartRef.current = Date.now()
+          return
         } else {
           const res = await api.get(`/tests/${id}`)
           t = res.test
@@ -190,7 +209,7 @@ export default function TestSession() {
     setRunning(false)
     try {
       const d = await api.post(`/attempts/${attemptId}/complete`, {})
-      nav(`/results/${attemptId}`, { state: { fresh: true } })
+      nav(`/results/${attemptId}`, { state: { fresh: true, pointsEarned: d.points || 0 } })
     } catch (e) { toast(e.message, 'err') }
   }
 

@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../api/client.js'
 import { Badge, Progress, Empty, useToast, fmtDuration, fmtDate, qTypeLabel, diffBadge } from '../../components/ui.jsx'
+import { useLocation } from 'react-router-dom'
 
 export default function Results() {
   const { id } = useParams()
   const nav = useNavigate()
+  const location = useLocation()
   const toast = useToast()
   const [data, setData] = useState(null)
   const [reviewMode, setReviewMode] = useState('all') // all | wrong | correct | skipped
@@ -17,6 +19,9 @@ export default function Results() {
   useEffect(() => {
     api.get(`/attempts/${id}`).then(setData).catch((e) => toast(e.message, 'err'))
   }, [id])
+
+  // Recognition: points earned on THIS test (passed from the submit action)
+  const pointsEarned = location.state?.pointsEarned
 
   if (!data) return <div className="auth-wrap"><div className="spin" style={{ width: 30, height: 30 }} /></div>
 
@@ -65,6 +70,13 @@ export default function Results() {
             <button className="btn btn-primary" onClick={() => nav('/analytics')}>View analytics</button>
           </div>
         </div>
+        {pointsEarned > 0 && (
+          <div className="row mt" style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)', borderRadius: 10, padding: '8px 14px', width: 'fit-content' }}>
+            <span style={{ fontSize: 18 }}>⭐</span>
+            <b style={{ color: 'var(--green)' }}>+{pointsEarned} points earned!</b>
+            <button className="btn btn-ghost btn-sm" onClick={() => nav('/rankings')}>Leaderboard dekho</button>
+          </div>
+        )}
         <div className="grid grid-4 mt">
           <div className="metric"><div className="m-label">Correct</div><div className="m-value" style={{ color: 'var(--green)' }}>{attempt.correct}</div></div>
           <div className="metric"><div className="m-label">Wrong</div><div className="m-value" style={{ color: 'var(--red)' }}>{attempt.wrong}</div></div>

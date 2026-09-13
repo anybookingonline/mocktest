@@ -1,20 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, useToast } from '../../components/ui.jsx'
 
 export default function Doubts() {
   const toast = useToast()
+  const nav = useNavigate()
   const [history, setHistory] = useState([])
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mockBusy, setMockBusy] = useState(null)
   const [flags, setFlags] = useState({ voiceDoubts: false, telegramBot: false, voiceUnlocked: false, telegramUnlimited: false })
   const [link, setLink] = useState(null) // { code, botUsername }
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
+
+  // #4 Doubt-to-Mock loop: AI generates 3 similar questions from this doubt
+  const makeDoubtMock = async (doubtId) => {
+    setMockBusy(doubtId)
+    try {
+      const d = await api.post('/revision/doubt-mock', { doubtId })
+      toast(d.existing ? 'Practice test already ready — kholo!' : `3 similar questions ready!`, 'ok')
+      nav(`/tests/${d.testId}/session`)
+    } catch (e) {
+      toast(e.message, 'err')
+    } finally { setMockBusy(null) }
+  }
 
   const load = () => api.get('/ai/doubts').then((d) => setHistory(d.doubts)).catch(() => {})
   useEffect(() => {
@@ -139,6 +153,11 @@ export default function Doubts() {
           <div key={h.id} className="card">
             <div className="spread mb"><b className="small">{h.question_text || h.message?.slice(0, 90)}</b><span className="tiny">{h.created_at}</span></div>
             <div className="ai-bubble">{h.ai_response}</div>
+            <div className="row mt">
+              <button className="btn btn-ghost btn-sm" onClick={() => makeDoubtMock(h.id)} disabled={mockBusy === h.id}>
+                {mockBusy === h.id ? 'Generating…' : '🎯 Practice 3 similar questions'}
+              </button>
+            </div>
           </div>
         ))}
       </div>

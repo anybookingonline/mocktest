@@ -20,7 +20,8 @@ export default function Revision() {
     try {
       const d = await api.post('/revision/start', {})
       toast(`Revision test ready — ${d.questionCount} questions`, 'ok')
-      nav(`/tests/${d.attemptId}/session`)
+      // attempt=… resume-mode: attempt already exists, session fetches it
+      nav(`/tests/0/session?attempt=${d.attemptId}`)
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
 
