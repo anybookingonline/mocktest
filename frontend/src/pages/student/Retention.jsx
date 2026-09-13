@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
@@ -16,6 +17,19 @@ export default function Retention() {
   const [txnRef, setTxnRef] = useState('')
   const [payerName, setPayerName] = useState('')
   const [proofFile, setProofFile] = useState(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // ?buyGroup=<id> deep-link from the Groups page: opens the group plan buy flow
+  const buyGroupId = new URLSearchParams(location.search).get('buyGroup')
+  const boughtRef = useRef(null)
+  useEffect(() => {
+    if (!buyGroupId || !gateway || busy) return
+    if (boughtRef.current === buyGroupId) return
+    boughtRef.current = buyGroupId
+    navigate('/retention', { replace: true })
+    buy(`group_discussions:${buyGroupId}`)
+  }, [buyGroupId, gateway])
 
   const reload = () => {
     api.get('/payments/plans').then((d) => { setPlans(d); setGateway((g) => g || d.provider) }).catch(() => {})
@@ -32,17 +46,17 @@ export default function Retention() {
     if (paid === 'success' && gw === 'phonepe' && txn) {
       toast('Checking PhonePe payment status…', 'ok')
       api.post('/payments/verify', { provider: 'phonepe', orderId: txn })
-        .then((r) => { toast(r.active ? 'Payment verified! Data held for 1 year.' : `Payment ${r.status || 'pending'} — will activate once confirmed.`, r.active ? 'ok' : 'err'); reload() })
+        .then((r) => { toast(r.active ? 'Payment verified — activated!' : `Payment ${r.status || 'pending'} — will activate once confirmed.`, r.active ? 'ok' : 'err'); reload() })
         .catch((e) => toast('Verification failed: ' + e.message, 'err'))
       return
     }
-    if (paid === 'success') { toast('Payment successful! Your data is now held for 1 year.', 'ok'); reload() }
+    if (paid === 'success') { toast('Payment successful — activated!', 'ok'); reload() }
   }, [params])
 
   const gateways = useMemo(() => plans?.gateways || [], [plans])
-  const plan = plans?.plans?.[0]
-  const active = status?.active
   const currencySymbol = (c) => (c === 'INR' ? '₹' : c === 'USD' ? '$' : c + ' ')
+  const hasAddon = (id) => (status?.addons || []).some((a) => a.id === id)
+  const active = status?.active
 
   const loadRazorpay = () => new Promise((resolve, reject) => {
     if (window.Razorpay) return resolve()
@@ -53,12 +67,12 @@ export default function Retention() {
     document.body.appendChild(s)
   })
 
-  const buy = async () => {
+  const buy = async (planId) => {
     if (!gateway) return toast('Choose a payment method first', 'err')
     setBusy(true)
     setQrOrder(null)
     try {
-      const d = await api.post('/payments/create-order', { plan: 'retention_1y', gateway })
+      const d = await api.post('/payments/create-order', { plan: planId, gateway })
       if (d.provider === 'stripe' || d.provider === 'phonepe') {
         if (d.provider === 'phonepe') sessionStorage.setItem('pp_order', d.orderId)
         window.location.href = d.redirectUrl || d.checkoutUrl
@@ -86,7 +100,7 @@ export default function Retention() {
               razorpay_payment_id: res.razorpay_payment_id,
               razorpay_signature: res.razorpay_signature
             })
-            toast('Payment verified. Data held for 1 year.', 'ok')
+            toast('Payment verified — activated!', 'ok')
             reload()
           } catch (e) { toast('Verification failed: ' + e.message, 'err') }
         },
@@ -100,17 +114,17 @@ export default function Retention() {
     }
   }
 
-  const checkPhonePe = async () => {
+  const checkPhonePe = async (planId) => {
     setBusy(true)
     try {
       let orderId = sessionStorage.getItem('pp_order')
       if (!orderId) {
-        const d = await api.post('/payments/create-order', { plan: 'retention_1y', gateway: 'phonepe' })
+        const d = await api.post('/payments/create-order', { plan: planId, gateway: 'phonepe' })
         orderId = d.orderId
         sessionStorage.setItem('pp_order', orderId)
       }
       const r = await api.post('/payments/verify', { provider: 'phonepe', orderId })
-      toast(r.active ? 'Payment verified! Data held for 1 year.' : 'Not paid yet — please complete the PhonePe payment.', r.active ? 'ok' : 'err')
+      toast(r.active ? 'Payment verified — activated!' : 'Not paid yet — please complete the PhonePe payment.', r.active ? 'ok' : 'err')
       if (r.active) reload()
     } catch (e) { toast(e.message, 'err') }
     setBusy(false)
@@ -125,7 +139,7 @@ export default function Retention() {
       } else {
         await api.post('/payments/qr/confirm', { orderId: qrOrder.orderId, txnRef, payerName })
       }
-      toast('Payment reported with proof. Admin will verify and activate your retention.', 'ok')
+      toast('Payment reported with proof. Admin will verify and activate your plan.', 'ok')
       setQrOrder(null)
       setTxnRef('')
       setPayerName('')
@@ -134,102 +148,168 @@ export default function Retention() {
     } catch (e) { toast(e.message, 'err') }
   }
 
+  const GatewayPicker = () => (
+    gateways.length > 1 && (
+      <div className="row mb" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
+        {gateways.map((g) => (
+          <label key={g.id} className="chip" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, background: gateway === g.id ? 'var(--accent)' : '', color: gateway === g.id ? '#fff' : '' }}>
+            <input type="radio" name="gw" checked={gateway === g.id} onChange={() => { setGateway(g.id); setQrOrder(null) }} />
+            {g.label.replace(/[🟢💳📱🔳]/g, '').trim()}
+          </label>
+        ))}
+      </div>
+    )
+  )
+
+  const BuyButtons = ({ planId, active: owned }) => (
+    !qrOrder && (
+      <>
+        <button className="btn btn-accent mt" style={{ width: '100%' }} onClick={() => buy(planId)} disabled={busy}>
+          {busy ? 'Please wait…' : owned ? 'Renew / extend' : `Buy now`}
+        </button>
+        {gateway === 'phonepe' && (
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => checkPhonePe(planId)} disabled={busy}>
+            Already paid on PhonePe? Check status
+          </button>
+        )}
+      </>
+    )
+  )
+
+  const QrPanel = () => qrOrder && (
+    <div className="mt">
+      <p className="tiny muted mb">Scan this QR with any UPI app (GPay / PhonePe / Paytm) and pay {currencySymbol(qrOrder.currency)}{qrOrder.amount}.</p>
+      {qrOrder.qr.qrImage ? (
+        <img src={qrOrder.qr.qrImage} alt="Payment QR" style={{ width: 220, height: 220, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 12 }} />
+      ) : qrOrder.qr.upiId ? (
+        <QrImage upiId={qrOrder.qr.upiId} holderName={qrOrder.qr.holderName} amount={qrOrder.amount} note={qrOrder.qr.note} />
+      ) : (
+        <p className="tiny muted">QR not configured by admin yet.</p>
+      )}
+      <p className="tiny mb" style={{ marginTop: 8 }}>{qrOrder.qr.holderName || ''} {qrOrder.qr.note}</p>
+      <div className="row" style={{ marginTop: 10 }}>
+        <input className="input" style={{ flex: 1 }} placeholder="Transaction / UTR ID" value={txnRef} onChange={(e) => setTxnRef(e.target.value)} />
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <input className="input" style={{ flex: 1 }} placeholder="Your name (as shown in UPI app)" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
+      </div>
+      <label className="field" style={{ marginTop: 10, textAlign: 'left' }}>
+        <span className="tiny muted">Payment screenshot (proof for admin) — optional but speeds up verification</span>
+        <input type="file" accept="image/*" className="input" onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
+        {proofFile && <p className="tiny muted">Selected: {proofFile.name}</p>}
+      </label>
+      <button className="btn btn-accent" style={{ width: '100%', marginTop: 10 }} onClick={confirmQr}>I have paid — verify my payment</button>
+      <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => { setQrOrder(null); setBusy(false) }}>Cancel</button>
+    </div>
+  )
+
+  const plan = plans?.plans?.[0]
+  const addons = plans?.addons || []
+
   return (
-    <StudentLayout title="Data Retention">
+    <StudentLayout title="Plans & Add-ons">
       <div className="card mb spread">
         <div>
-          <b>Your data, your choice</b>
-          <p className="tiny">Free accounts: your test history, results, doubts and bookmarks are auto-deleted after 24 hours. Buy the 1-Year Data Retention plan to keep everything safe for a full year.</p>
+          <b>Your data, your power</b>
+          <p className="tiny">Free accounts: your test history, results, doubts and bookmarks are auto-deleted after 24 hours, and AI features have daily caps. Get the plan that fits — one-time payments, no auto-renew.</p>
         </div>
-        <Badge kind={active ? 'green' : 'red'}>{active ? 'Active' : 'Free plan'}</Badge>
+        <Badge kind={active ? 'green' : 'red'}>{active ? 'Retention active' : 'Free plan'}</Badge>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', alignItems: 'start' }}>
-        <div className="card">
-          <b className="small mb" style={{ display: 'block' }}>Current status</b>
-          {active ? (
-            <div>
-              <div className="metric" style={{ marginBottom: 10 }}>
-                <div className="m-label">Data held until</div>
-                <div className="m-value" style={{ color: 'var(--green)' }}>{status?.retainUntil ? new Date(status.retainUntil.replace(' ', 'T') + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</div>
-              </div>
-              <p className="tiny muted">Your test history and results are protected until this date. Renew to extend by another year.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="metric" style={{ marginBottom: 10 }}>
-                <div className="m-label">Free plan</div>
-                <div className="m-value" style={{ color: 'var(--red)' }}>Data auto-deletes in 24h</div>
-              </div>
-              <p className="tiny muted">Attempts, results, doubts and bookmarks older than 24 hours are removed automatically. Upgrade to keep them.</p>
-            </div>
+      {qrOrder && (
+        <div className="card mb">
+          <b className="small mb" style={{ display: 'block' }}>Complete your payment — {currencySymbol(qrOrder.currency)}{qrOrder.amount}</b>
+          <QrPanel />
+        </div>
+      )}
+
+      <div className="grid grid-3" style={{ alignItems: 'stretch' }}>
+        {/* ------------------------------ Retention ------------------------------ */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="spread mb">
+            <Badge kind="purple">🗄️ 1-Year Data Retention</Badge>
+            {active && <Badge kind="green">active</Badge>}
+          </div>
+          <div style={{ fontSize: 38, fontWeight: 800 }}>{plan ? currencySymbol(plan.currency) + plan.price : '…'}</div>
+          <p className="tiny muted">{plan ? `${plan.retentionDays || 365} days · one-time` : ''}</p>
+          <ul className="mt small" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.9, flex: 1 }}>
+            <li>Keep your test history & results</li>
+            <li>Keep doubts & AI explanations</li>
+            <li>Keep bookmarks & analytics</li>
+            <li>🔥 AI Focus Areas + 🔁 AI Revision unlocked</li>
+            <li>⚔️ Unlimited Quiz Battles</li>
+          </ul>
+          <GatewayPicker />
+          {plan && <BuyButtons planId="retention_1y" active={active} />}
+          {!active && (
+            <p className="tiny muted mt">Data older than 24h auto-deletes on the free plan.</p>
           )}
         </div>
 
-        <div className="card" style={{ textAlign: 'center' }}>
-          {plan && (
-            <>
-              <Badge kind="purple">1-Year Data Retention</Badge>
-              <div style={{ fontSize: 40, fontWeight: 800, margin: '14px 0 2px' }}>{currencySymbol(plan.currency)}{plan.price}</div>
-              <p className="tiny muted">{plan.retentionDays} days · one-time payment</p>
-              <ul className="mt small" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.9 }}>
-                <li>Keep your test history & results</li>
-                <li>Keep doubts & AI explanations</li>
-                <li>Keep bookmarks & analytics</li>
+        {/* ------------------------------ Group plan ------------------------------ */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="spread mb">
+            <Badge kind="green">👥 Group Plan</Badge>
+            {active && <Badge kind="green">paid member</Badge>}
+          </div>
+          <div style={{ fontSize: 38, fontWeight: 800 }}>{plan ? currencySymbol(plan.currency) + plan.price : '…'}</div>
+          <p className="tiny muted">Retention plan ke price par — data bhi, group chat bhi</p>
+          <ul className="mt small" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.9, flex: 1 }}>
+            <li>Puri data retention (jaise normal plan)</li>
+            <li>Group Discussions chat — paid member seat</li>
+            <li>2 paying members = 1 dost ka seat FREE</li>
+          </ul>
+          <GatewayPicker />
+          <p className="tiny muted mt">
+            {qrOrder ? 'Payment complete karo upar.' : 'Buy karne ke liye pehle payment method choose karo, phir Groups page → apna group kholo → "Group Plan le lo".'}
+          </p>
+          <Link to="/groups" className="btn btn-ghost btn-sm mt">👥 Groups page →</Link>
+        </div>
+
+        {/* ------------------------------ Add-ons ------------------------------ */}
+        {addons.map((a) => {
+          const owned = hasAddon(a.id)
+          const until = (status?.addons || []).find((x) => x.id === a.id)?.until
+          return (
+            <div key={a.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="spread mb">
+                <Badge kind="amber">{a.icon} {a.name}</Badge>
+                {owned && <Badge kind="green">active</Badge>}
+              </div>
+              <div style={{ fontSize: 38, fontWeight: 800 }}>{currencySymbol(a.currency || 'INR')}{a.price}</div>
+              <p className="tiny muted">{a.days} days · one-time add-on</p>
+              <p className="small mt" style={{ flex: 1 }}>{a.description}</p>
+              <ul className="tiny" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.8 }}>
+                {(a.perks || []).map((p) => <li key={p}>{p}</li>)}
               </ul>
-
-              {gateways.length > 1 && (
-                <div className="row mb" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {gateways.map((g) => (
-                    <label key={g.id} className="chip" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, background: gateway === g.id ? 'var(--accent)' : '', color: gateway === g.id ? '#fff' : '' }}>
-                      <input type="radio" name="gw" checked={gateway === g.id} onChange={() => { setGateway(g.id); setQrOrder(null) }} />
-                      {g.label.replace(/[🟢💳📱🔳]/g, '').trim()}
-                    </label>
-                  ))}
-                </div>
+              <GatewayPicker />
+              <BuyButtons planId={a.id} active={owned} />
+              {owned && until && (
+                <p className="tiny muted mt">Active until {new Date(until.replace(' ', 'T') + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
               )}
+            </div>
+          )
+        })}
 
-              {!qrOrder && (
-                <>
-                  <button className="btn btn-accent mt" style={{ width: '100%' }} onClick={buy} disabled={busy}>
-                    {busy ? 'Please wait…' : active ? 'Renew for another year' : `Upgrade — ${currencySymbol(plan.currency)}${plan.price}`}
-                  </button>
-                  {gateway === 'phonepe' && (
-                    <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={checkPhonePe} disabled={busy}>
-                      Already paid on PhonePe? Check status
-                    </button>
-                  )}
-                </>
-              )}
+        {/* ------------------------------ Focus Areas teaser ------------------------------ */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ fontSize: 30 }}>🔥</div>
+          <b className="small mt mb" style={{ display: 'block' }}>AI Focus Areas — Pro exclusive</b>
+          <p className="tiny muted" style={{ flex: 1 }}>
+            Pichhle saalon ke papers se AI nikalta hai ki kaunse topics sabse zyada pooche jate hain — wahi pehle master karo. Kisi bhi paid plan ke saath unlock.
+          </p>
+          <Link to="/focus" className="btn btn-ghost btn-sm">Preview →</Link>
+        </div>
 
-              {qrOrder && (
-                <div className="mt">
-                  <p className="tiny muted mb">Scan this QR with any UPI app (GPay / PhonePe / Paytm) and pay {currencySymbol(qrOrder.currency)}{qrOrder.amount}.</p>
-                  {qrOrder.qr.qrImage ? (
-                    <img src={qrOrder.qr.qrImage} alt="Payment QR" style={{ width: 220, height: 220, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 12 }} />
-                  ) : qrOrder.qr.upiId ? (
-                    <QrImage upiId={qrOrder.qr.upiId} holderName={qrOrder.qr.holderName} amount={qrOrder.amount} note={qrOrder.qr.note} />
-                  ) : (
-                    <p className="tiny muted">QR not configured by admin yet.</p>
-                  )}
-                  <p className="tiny mb" style={{ marginTop: 8 }}>{qrOrder.qr.holderName || ''} {qrOrder.qr.note}</p>
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <input className="input" style={{ flex: 1 }} placeholder="Transaction / UTR ID" value={txnRef} onChange={(e) => setTxnRef(e.target.value)} />
-                  </div>
-                  <div className="row" style={{ marginTop: 8 }}>
-                    <input className="input" style={{ flex: 1 }} placeholder="Your name (as shown in UPI app)" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
-                  </div>
-                  <label className="field" style={{ marginTop: 10, textAlign: 'left' }}>
-                    <span className="tiny muted">Payment screenshot (proof for admin) — optional but speeds up verification</span>
-                    <input type="file" accept="image/*" className="input" onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
-                    {proofFile && <p className="tiny muted">Selected: {proofFile.name}</p>}
-                  </label>
-                  <button className="btn btn-accent" style={{ width: '100%', marginTop: 10 }} onClick={confirmQr}>I have paid — verify my payment</button>
-                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => { setQrOrder(null); setBusy(false) }}>Cancel</button>
-                </div>
-              )}
-            </>
-          )}
+        {/* ------------------------------ Why upgrade ------------------------------ */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ fontSize: 30 }}>🎯</div>
+          <b className="small mt mb" style={{ display: 'block' }}>Kya choose karun?</b>
+          <p className="tiny muted" style={{ flex: 1 }}>
+            {active ? 'Retention ho gaya hai — ab AI Power Pack lo agar aap roz AI mocks aur Telegram par unlimited doubts chahte ho.'
+              : 'Pehle Data Retention lo (aapki mehnat ka data safe rahega), phir AI Power Pack unlimited AI ke liye.'}
+          </p>
+          <Link to="/doubts" className="btn btn-ghost btn-sm">Try the AI tutor →</Link>
         </div>
       </div>
     </StudentLayout>

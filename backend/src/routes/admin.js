@@ -96,6 +96,9 @@ router.get('/reports', async (req, res) => {
 router.get('/settings', async (req, res) => {
   const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'monetization.gateways', 'monetization.provider', 'monetization.price', 'monetization.currency', 'monetization.retentionDays', 'monetization.freeHoldHours',
+    'addons.aiPowerPrice', 'addons.aiPowerDays', 'addons.voicePrice', 'addons.voiceDays',
+    'features.groupStudy', 'features.groupDiscussions', 'features.battles',
+    'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays',
     'razorpay.keyId', 'razorpay.keySecret', 'stripe.secretKey', 'stripe.webhookSecret',
     'phonepe.merchantId', 'phonepe.saltKey', 'phonepe.saltIndex', 'phonepe.env', 'phonepe.baseUrl',
     'qr.upiId', 'qr.qrImage', 'qr.holderName', 'qr.note']

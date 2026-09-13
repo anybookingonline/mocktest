@@ -6,6 +6,8 @@ import { jsonrepair } from 'jsonrepair'
 // AI Provider abstraction.
 // Primary engine: DeepSeek. Fallback: Gemini (also used for all vision tasks).
 // OpenRouter supported as an optional provider (offers free LLM models).
+// "custom" = any OpenAI-compatible endpoint (Groq, Mistral, xAI/Grok, Together,
+// Fireworks, Cerebras, Ollama, vLLM, …) configured in Admin → AI Config.
 // ---------------------------------------------------------------------------
 
 const PROVIDERS = {
@@ -24,6 +26,17 @@ const PROVIDERS = {
   }
 }
 
+// Preset buttons shown in the admin UI for one-click custom provider setup
+export const CUSTOM_PRESETS = {
+  groq: { base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', label: 'Groq' },
+  mistral: { base: 'https://api.mistral.ai/v1', model: 'mistral-large-latest', label: 'Mistral' },
+  xai: { base: 'https://api.x.ai/v1', model: 'grok-3-mini', label: 'xAI (Grok)' },
+  together: { base: 'https://api.together.xyz/v1', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', label: 'Together AI' },
+  fireworks: { base: 'https://api.fireworks.ai/inference/v1', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct', label: 'Fireworks AI' },
+  cerebras: { base: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', label: 'Cerebras' },
+  ollama: { base: 'http://localhost:11434/v1', model: 'llama3.1', label: 'Ollama (local)' }
+}
+
 export async function getConfig(key, def = null) {
   const row = await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(key)
   return row ? row.value : def
@@ -37,15 +50,50 @@ export async function setConfig(key, value) {
 
 export async function getAiSettings() {
   const keys = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model',
-    'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model']
+    'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
+    'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
+    'features.voiceDoubts', 'features.telegramBot', 'features.groupStudy', 'features.groupDiscussions', 'features.battles', 'openai.apiKey', 'telegram.botToken',
+    'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays']
   const out = {}
   for (const k of keys) out[k] = await getConfig(k, '')
   return out
 }
 
+// Optional platform features (admin toggles). Voice doubts use the OpenAI
+// Whisper STT API; the Telegram tutor bot uses the official Bot API.
+export async function getFeatureFlags() {
+  const s = await getAiSettings()
+  return {
+    voiceDoubts: s['features.voiceDoubts'] === 'true' && Boolean(s['openai.apiKey']),
+    telegramBot: s['features.telegramBot'] === 'true' && Boolean(s['telegram.botToken']),
+    groupStudy: s['features.groupStudy'] === 'true',
+    groupDiscussions: s['features.groupDiscussions'] === 'true',
+    battles: s['features.battles'] === 'true'
+  }
+}
+
+// ------------------------------ Whisper STT ---------------------------------
+
+export async function transcribeAudio({ buffer, mimeType = 'audio/ogg' }) {
+  const apiKey = await getConfig('openai.apiKey')
+  if (!apiKey) throw new Error('OpenAI API key not configured (required for voice doubts)')
+  const form = new FormData()
+  form.append('file', new Blob([buffer], { type: mimeType }), 'audio.ogg')
+  form.append('model', 'whisper-1')
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error?.message || `Whisper failed (${res.status})`)
+  return data.text || ''
+}
+
 export async function hasAnyKey() {
   const s = await getAiSettings()
-  return Boolean(s['deepseek.apiKey'] || s['gemini.apiKey'] || s['openrouter.apiKey'])
+  return Boolean(s['deepseek.apiKey'] || s['gemini.apiKey'] || s['openrouter.apiKey'] ||
+    (s['custom.enabled'] !== 'false' && s['custom.apiKey'] && s['custom.baseUrl']))
 }
 
 async function logAi(action, provider, model, status, latencyMs, user) {
@@ -155,6 +203,22 @@ async function callOpenRouter({ model, system, messages, json, temperature, maxT
   return data.choices?.[0]?.message?.content ?? ''
 }
 
+// Custom OpenAI-compatible provider (Groq / Mistral / xAI / Together / Ollama / …)
+async function callCustom({ model, system, messages, json, temperature, maxTokens = 8192 }) {
+  const enabled = await getConfig('custom.enabled', 'true') !== 'false'
+  if (!enabled) throw new Error('Custom provider is disabled')
+  const apiKey = await getConfig('custom.apiKey')
+  const baseUrl = (await getConfig('custom.baseUrl'))?.replace(/\/$/, '')
+  if (!baseUrl) throw new Error('Custom provider baseUrl not configured')
+  if (!apiKey && !/localhost|127\.0\.0\.1/.test(baseUrl)) throw new Error('Custom provider API key not configured')
+  const data = await callOpenAICompatible({
+    baseUrl, apiKey: apiKey || 'not-needed',
+    model: model || await getConfig('custom.model', ''),
+    system, messages, json, temperature, maxTokens
+  })
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
 // -------------------------------- Gemini ------------------------------------
 
 async function callGemini({ model, system, messages, parts = [], json = false, temperature = 0.7, imageData = null, mimeType = null }) {
@@ -230,9 +294,10 @@ export async function aiChat({ system, messages, json = false, temperature = 0.7
   }
 
   const order = []
-  if (provider === 'gemini') order.push('gemini', 'deepseek', 'openrouter')
-  else if (provider === 'openrouter') order.push('openrouter', 'deepseek', 'gemini')
-  else order.push('deepseek', 'gemini', 'openrouter')
+  if (provider === 'gemini') order.push('gemini', 'deepseek', 'custom', 'openrouter')
+  else if (provider === 'openrouter') order.push('openrouter', 'deepseek', 'custom', 'gemini')
+  else if (provider === 'custom') order.push('custom', 'deepseek', 'gemini', 'openrouter')
+  else order.push('deepseek', 'custom', 'gemini', 'openrouter')
 
   const errors = []
   for (const p of order) {
@@ -241,6 +306,7 @@ export async function aiChat({ system, messages, json = false, temperature = 0.7
       let out
       if (p === 'deepseek') out = await callDeepSeek({ model, system, messages, json, temperature, parts, maxTokens })
       else if (p === 'gemini') out = await callGemini({ model, system, messages, json, temperature, parts })
+      else if (p === 'custom') out = await callCustom({ model, system, messages, json, temperature, maxTokens })
       else out = await callOpenRouter({ model, system, messages, json, temperature, maxTokens })
       logAi(action, p, model || 'default', 'ok', Date.now() - start, null)
       if (json) {

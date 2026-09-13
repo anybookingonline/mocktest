@@ -1,14 +1,40 @@
 import express from 'express'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
+import multer from 'multer'
 import { solveDoubtWithAI, explainQuestionWithAI } from '../utils/aiTasks.js'
-import { getAiSettings } from '../utils/aiService.js'
+import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS } from '../utils/aiService.js'
+import { getEntitlements } from '../utils/addons.js'
+import { awardPoints } from '../utils/points.js'
 
 const router = express.Router()
 router.use(authRequired)
 
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^audio\//.test(file.mimetype)) cb(null, true)
+    else cb(new Error('Only audio files are allowed'))
+  }
+})
+
+// GET /api/ai/features - which optional features are enabled for THIS user
+// (admin toggle AND the user's paid entitlements drive the student UI)
+router.get('/features', async (req, res) => {
+  const flags = await getFeatureFlags()
+  const ent = await getEntitlements(req.user.id)
+  res.json({
+    ...flags,
+    voiceUnlocked: flags.voiceDoubts && ent.voiceDoubts,
+    telegramUnlimited: flags.telegramBot && ent.aiPower,
+    addons: ent.addons
+  })
+})
+
 // POST /api/ai/doubt - AI doubt solving for any question
-router.post('/doubt', async (req, res) => {
+router.post('/doubt', aiLimiter(), async (req, res) => {
   const { questionId, questionText, message } = req.body || {}
   if (!message) return res.status(400).json({ error: 'message required' })
   let q = null
@@ -22,6 +48,9 @@ router.post('/doubt', async (req, res) => {
     })
     await db.prepare(`INSERT INTO doubts (user_id, question_id, question_text, message, ai_response, model)
       VALUES (?,?,?,?,?,?)`).run(req.user.id, questionId || null, q?.question_text || questionText || null, message, response, 'ai')
+    // Recognition: asking + resolving a doubt both earn points
+    await awardPoints(req.user.id, 'doubt_asked')
+    await awardPoints(req.user.id, 'doubt_resolved')
     res.json({ response })
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
@@ -29,7 +58,7 @@ router.post('/doubt', async (req, res) => {
 })
 
 // POST /api/ai/explain - generate/refresh explanation for a question
-router.post('/explain', async (req, res) => {
+router.post('/explain', aiLimiter(), async (req, res) => {
   const { questionId } = req.body || {}
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
   if (!q) return res.status(404).json({ error: 'Question not found' })
@@ -42,6 +71,32 @@ router.post('/explain', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
   }
+})
+
+// POST /api/ai/transcribe - voice doubt: audio -> text (Whisper), then the
+// frontend sends the transcript through /ai/doubt as usual
+router.post('/transcribe', aiLimiter(), voiceUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Audio file required' })
+  // Voice is a paid add-on — server-side enforcement, not just UI hiding
+  const ent = await getEntitlements(req.user.id)
+  if (!ent.voiceDoubts) return res.status(402).json({ error: 'Voice Doubts add-on required', upgrade: '/retention' })
+  try {
+    const text = await transcribeAudio({ buffer: req.file.buffer, mimeType: req.file.mimetype })
+    res.json({ text })
+  } catch (e) {
+    res.status(502).json({ error: 'Transcription failed: ' + e.message })
+  }
+})
+
+// GET /api/ai/telegram/link - one-time bot code for linking a student account
+router.get('/telegram/link', async (req, res) => {
+  const s = await getFeatureFlags()
+  if (!s.telegramBot) return res.status(403).json({ error: 'Telegram tutor is not enabled' })
+  // user-scoped code: deterministic so it can be re-shown without storing state
+  const crypto = await import('crypto')
+  const secret = await getConfig('telegram.botToken')
+  const code = crypto.createHash('sha256').update(`${secret}:${req.user.id}`).digest('hex').slice(0, 8).toUpperCase()
+  res.json({ code, botUsername: (await getConfig('telegram.botUsername')) || '' })
 })
 
 // GET /api/ai/doubts - user's doubt history
@@ -57,7 +112,7 @@ const DIFF_NAMES = { 1: 'easy', 2: 'medium', 3: 'hard' }
 
 // POST /api/ai/adaptive/start - start adaptive practice session
 // body: { examId, subjectId?, chapterId?, topicId?, numQuestions=10 }
-router.post('/adaptive/start', async (req, res) => {
+router.post('/adaptive/start', aiLimiter(), async (req, res) => {
   const b = req.body || {}
   if (!b.examId) return res.status(400).json({ error: 'examId required' })
   const num = Number(b.numQuestions) || 10
@@ -163,14 +218,21 @@ router.get('/provider-status', async (req, res) => {
     fallbackEnabled: s['ai.fallbackEnabled'] !== 'false',
     deepseekConfigured: Boolean(s['deepseek.apiKey']),
     geminiConfigured: Boolean(s['gemini.apiKey']),
-    openrouterConfigured: Boolean(s['openrouter.apiKey'])
+    openrouterConfigured: Boolean(s['openrouter.apiKey']),
+    customConfigured: Boolean(s['custom.baseUrl'] && s['custom.enabled'] !== 'false')
   })
 })
 
+// GET /api/ai/custom-presets (admin) - quick presets for the custom provider
+router.get('/custom-presets', adminOnly, (req, res) => {
+  res.json({ presets: CUSTOM_PRESETS })
+})
+
 // POST /api/ai/config (admin) - save provider settings
-router.post('/config', adminOnly, async (req, res) => {
+router.post('/config', adminOnly, aiLimiter(), async (req, res) => {
   const b = req.body || {}
-  const allowed = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model']
+  const allowed = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model', 'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
+    'features.voiceDoubts', 'features.telegramBot', 'openai.apiKey', 'telegram.botToken', 'telegram.botUsername']
   for (const [k, v] of Object.entries(b)) {
     if (allowed.includes(k) && v != null) {
       await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, String(v))

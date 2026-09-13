@@ -10,11 +10,16 @@ export default function AdminAI() {
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [cache, setCache] = useState(null)
+  const [presets, setPresets] = useState({})
+  const [flags, setFlags] = useState(null)
+  const [tgSetup, setTgSetup] = useState(false)
 
   useEffect(() => {
     api.get('/admin/settings').then((d) => setCfg(d.settings)).catch(() => {})
     api.get('/ai/provider-status').then(setStatus).catch(() => {})
     api.get('/admin/ai-cache').then(setCache).catch(() => {})
+    api.get('/ai/custom-presets').then((d) => setPresets(d.presets || {})).catch(() => {})
+    api.get('/ai/features').then(setFlags).catch(() => {})
   }, [])
 
   const clearCache = async () => {
@@ -44,6 +49,14 @@ export default function AdminAI() {
     } catch (e) { toast('Connection test failed: ' + e.message, 'err') } finally { setTesting(false) }
   }
 
+  const setupTelegramWebhook = async () => {
+    setTgSetup(true)
+    try {
+      const d = await api.post('/telegram/admin/setup', {})
+      toast('Telegram webhook wired: ' + d.webhookUrl, 'ok')
+    } catch (e) { toast(e.message, 'err') } finally { setTgSetup(false) }
+  }
+
   if (!cfg) return <AdminLayout title="AI Configuration"><div className="spin" /></AdminLayout>
 
   const configured = (k) => Boolean(cfg[k])
@@ -60,6 +73,7 @@ export default function AdminAI() {
             <Badge kind="purple">DeepSeek (primary)</Badge>
             <Badge kind="blue">Gemini (fallback + vision)</Badge>
             <Badge kind="amber">OpenRouter (free models)</Badge>
+            <Badge kind="green">Custom (any API)</Badge>
           </div>
         </div>
         <hr className="divider" />
@@ -69,11 +83,12 @@ export default function AdminAI() {
               <option value="deepseek">DeepSeek</option>
               <option value="gemini">Gemini</option>
               <option value="openrouter">OpenRouter</option>
+              <option value="custom">Custom provider</option>
             </select>
           </label>
           <label className="field"><span>Automatic fallback</span>
             <select className="select" value={cfg['ai.fallbackEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('ai.fallbackEnabled', e.target.value)}>
-              <option value="true">Enabled (primary → Gemini → OpenRouter)</option>
+              <option value="true">Enabled (primary → DeepSeek → Custom → Gemini → OpenRouter)</option>
               <option value="false">Disabled</option>
             </select>
           </label>
@@ -124,6 +139,145 @@ export default function AdminAI() {
             <input className="input" value={cfg['openrouter.model'] || 'deepseek/deepseek-chat-v3-0324:free'} onChange={(e) => set('openrouter.model', e.target.value)} />
           </label>
           <p className="tiny muted">Free models like <i>deepseek/deepseek-chat-v3-0324:free</i>, <i>meta-llama/llama-3.3-70b-instruct:free</i>, <i>google/gemini-2.0-flash-exp:free</i> at openrouter.ai</p>
+        </div>
+      </div>
+
+      <div className="card mb">
+        <div className="spread mb">
+          <div>
+            <b>Custom AI provider <Badge kind="green">any OpenAI-compatible API</Badge></b>
+            <p className="tiny muted">Bring any OpenAI-compatible endpoint: Groq, Mistral, xAI (Grok), Together, Fireworks, Cerebras, a self-hosted Ollama/vLLM, or your own gateway. {status?.customConfigured ? <Badge kind="green">configured</Badge> : <Badge kind="gray">not configured</Badge>}</p>
+          </div>
+        </div>
+        <div className="row mb" style={{ flexWrap: 'wrap' }}>
+          {Object.entries(presets).map(([id, p]) => (
+            <button key={id} type="button" className="btn btn-ghost btn-sm" onClick={() => {
+              set('custom.name', p.label)
+              set('custom.baseUrl', p.base)
+              set('custom.model', p.model)
+              set('custom.enabled', 'true')
+              if (cfg['ai.provider'] === 'deepseek' && !cfg['deepseek.apiKey']) set('ai.provider', 'custom')
+            }}>⚡ {p.label}</button>
+          ))}
+        </div>
+        <div className="field-row">
+          <label className="field"><span>Display name</span>
+            <input className="input" placeholder="Groq / Mistral / My gateway…" value={cfg['custom.name'] || ''} onChange={(e) => set('custom.name', e.target.value)} />
+          </label>
+          <label className="field" style={{ gridColumn: 'span 2' }}><span>Base URL (OpenAI-compatible, ends before /chat/completions)</span>
+            <input className="input" placeholder="https://api.groq.com/openai/v1" value={cfg['custom.baseUrl'] || ''} onChange={(e) => set('custom.baseUrl', e.target.value)} />
+          </label>
+          <label className="field"><span>API key (empty = none, for local Ollama)</span>
+            <input className="input" type="password" placeholder="gsk_… / sk-…" value={cfg['custom.apiKey'] || ''} onChange={(e) => set('custom.apiKey', e.target.value)} />
+          </label>
+          <label className="field"><span>Model</span>
+            <input className="input" placeholder="llama-3.3-70b-versatile" value={cfg['custom.model'] || ''} onChange={(e) => set('custom.model', e.target.value)} />
+          </label>
+          <label className="field"><span>Status</span>
+            <select className="select" value={cfg['custom.enabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('custom.enabled', e.target.value)}>
+              <option value="true">Enabled — include in fallback chain</option>
+              <option value="false">Disabled</option>
+            </select>
+          </label>
+        </div>
+        <p className="tiny muted">Works with any API that accepts POST {'{baseUrl}'}/chat/completions with an Authorization: Bearer header — Groq (console.groq.com), Mistral (console.mistral.ai), xAI (console.x.ai), Together, Fireworks, Cerebras, OpenAI itself, or a local Ollama (base URL http://localhost:11434/v1, no key).</p>
+      </div>
+
+      <div className="card mb">
+        <b className="small mb" style={{ display: 'block' }}>Optional features — students ke UI me turant show/hide hote hain</b>
+        <div className="field-row">
+          <label className="field"><span>🎙️ Voice doubts (Hindi / Hinglish speech-to-text)</span>
+            <select className="select" value={cfg['features.voiceDoubts'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.voiceDoubts', e.target.value)}>
+              <option value="false">Off — mic button hidden</option>
+              <option value="true">On — students can speak doubts</option>
+            </select>
+          </label>
+          <label className="field"><span>💬 Telegram tutor bot</span>
+            <select className="select" value={cfg['features.telegramBot'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.telegramBot', e.target.value)}>
+              <option value="false">Off — Telegram connect card hidden</option>
+              <option value="true">On — students can link accounts</option>
+            </select>
+          </label>
+          <label className="field"><span>👥 Group Study</span>
+            <select className="select" value={cfg['features.groupStudy'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.groupStudy', e.target.value)}>
+              <option value="false">Off — Groups page/nav hidden</option>
+              <option value="true">On — students create & join groups</option>
+            </select>
+          </label>
+          <label className="field"><span>🗨️ Group Discussions (chat)</span>
+            <select className="select" value={cfg['features.groupDiscussions'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.groupDiscussions', e.target.value)}>
+              <option value="false">Off — chat hidden everywhere</option>
+              <option value="true">On — paid/entitled members can chat</option>
+            </select>
+          </label>
+          <label className="field"><span>⚔️ 1v1 Quiz Battles</span>
+            <select className="select" value={cfg['features.battles'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.battles', e.target.value)}>
+              <option value="false">Off — Battles page/nav hidden</option>
+              <option value="true">On — students duel with friends (ELO)</option>
+            </select>
+          </label>
+        </div>
+        {(cfg['features.groupStudy'] === 'true' || cfg['features.groupDiscussions'] === 'true') && (
+          <>
+            <hr className="divider" />
+            <b className="small mb" style={{ display: 'block' }}>👥 Group deal — "N paying members → M free seats"</b>
+            <div className="field-row">
+              <label className="field"><span>Paying members needed (N)</span>
+                <input type="number" min="1" className="input" value={cfg['groups.freeAfterPaid'] || 2} onChange={(e) => set('groups.freeAfterPaid', e.target.value)} />
+              </label>
+              <label className="field"><span>Free seats per deal (M)</span>
+                <input type="number" min="0" className="input" value={cfg['groups.freeSlots'] || 1} onChange={(e) => set('groups.freeSlots', e.target.value)} />
+              </label>
+              <label className="field"><span>Max free seats (cap)</span>
+                <input type="number" min="0" className="input" value={cfg['groups.maxFree'] || 3} onChange={(e) => set('groups.maxFree', e.target.value)} />
+              </label>
+              <label className="field"><span>Max members per group</span>
+                <input type="number" min="2" className="input" value={cfg['groups.maxMembers'] || 20} onChange={(e) => set('groups.maxMembers', e.target.value)} />
+              </label>
+            </div>
+            <p className="tiny muted">Default deal: 2 paying members → 1 free seat (cap 3). "4 ka group, 1 free" chahiye to N=3, M=1 set karo. Free seats group Discussions chat unlock karte hain (45 din ki validity, auto-extend). Group Study bina chat ke free hai — 0 infra cost.</p>
+          </>
+        )}
+        <div className="field-row">
+          <label className="field"><span>OpenAI API key (Whisper voice engine)</span>
+            <input className="input" type="password" placeholder="sk-…" value={cfg['openai.apiKey'] || ''} onChange={(e) => set('openai.apiKey', e.target.value)} />
+          </label>
+        </div>
+        {cfg['features.voiceDoubts'] === 'true' && !cfg['openai.apiKey'] && (
+          <p className="tiny" style={{ color: 'var(--amber)' }}>⚠️ Voice doubts ON hai par OpenAI key missing — mic button students ko nahi dikhega jab tak key save na ho.</p>
+        )}
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>Paid add-on pricing (students ke Plans page par dikhta hai)</b>
+        <div className="field-row">
+          <label className="field"><span>⚡ AI Power Pack — price (₹)</span>
+            <input type="number" className="input" value={cfg['addons.aiPowerPrice'] || 99} onChange={(e) => set('addons.aiPowerPrice', e.target.value)} />
+          </label>
+          <label className="field"><span>AI Power Pack — validity (days)</span>
+            <input type="number" className="input" value={cfg['addons.aiPowerDays'] || 365} onChange={(e) => set('addons.aiPowerDays', e.target.value)} />
+          </label>
+          <label className="field"><span>🎙️ Voice Doubts — price (₹)</span>
+            <input type="number" className="input" value={cfg['addons.voicePrice'] || 49} onChange={(e) => set('addons.voicePrice', e.target.value)} />
+          </label>
+          <label className="field"><span>Voice Doubts — validity (days)</span>
+            <input type="number" className="input" value={cfg['addons.voiceDays'] || 365} onChange={(e) => set('addons.voiceDays', e.target.value)} />
+          </label>
+        </div>
+        <p className="tiny muted">Whisper + unlimited AI aapke kharche wale features hain — isliye ye add-ons paid hain. Zero paisa lag raha ho (jaise Telegram text doubts, Group Study) to wo free rehta hai (limits ke saath).</p>
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>Telegram bot wiring</b>
+        <div className="field-row">
+          <label className="field"><span>Bot token (@BotFather se — keep secret)</span>
+            <input className="input" type="password" placeholder="123456:ABC-DEF…" value={cfg['telegram.botToken'] || ''} onChange={(e) => set('telegram.botToken', e.target.value)} />
+          </label>
+          <label className="field"><span>Bot username (optional, for the connect card)</span>
+            <input className="input" placeholder="YourExamAITutorBot" value={cfg['telegram.botUsername'] || ''} onChange={(e) => set('telegram.botUsername', e.target.value)} />
+          </label>
+        </div>
+        <div className="row">
+          <button className="btn btn-ghost btn-sm" onClick={setupTelegramWebhook} disabled={tgSetup || !cfg['telegram.botToken']}>
+            {tgSetup ? 'Wiring…' : '🔗 Wire webhook automatically'}
+          </button>
+          <span className="tiny muted">Turn bot ON + save first. Uses BACKEND_URL to build the webhook URL.</span>
         </div>
       </div>
 

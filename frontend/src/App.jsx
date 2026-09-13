@@ -5,6 +5,7 @@ import { ToastProvider } from './components/ui.jsx'
 import { Splash } from './pages/auth/AuthPages.jsx'
 
 import Landing from './pages/Landing.jsx'
+import Schools from './pages/Schools.jsx'
 import { LoginPage, RegisterPage } from './pages/auth/AuthPages.jsx'
 import Dashboard from './pages/student/Dashboard.jsx'
 import Practice from './pages/student/Practice.jsx'
@@ -13,6 +14,10 @@ import TestSession from './pages/student/TestSession.jsx'
 import Results from './pages/student/Results.jsx'
 import Adaptive from './pages/student/Adaptive.jsx'
 import Doubts from './pages/student/Doubts.jsx'
+import Groups from './pages/student/Groups.jsx'
+import FocusAreas from './pages/student/FocusAreas.jsx'
+import Revision from './pages/student/Revision.jsx'
+import Battles from './pages/student/Battles.jsx'
 import Bookmarks from './pages/student/Bookmarks.jsx'
 import History from './pages/student/History.jsx'
 import Retention from './pages/student/Retention.jsx'
@@ -29,6 +34,8 @@ import AdminUsers from './pages/admin/Users.jsx'
 import AdminReports from './pages/admin/Reports.jsx'
 import AdminSettings from './pages/admin/Settings.jsx'
 import AdminPayments from './pages/admin/Payments.jsx'
+import AdminInstitutes from './pages/admin/Institutes.jsx'
+import InstituteDashboard from './pages/admin/InstituteDashboard.jsx'
 
 function Protected({ children, admin = false }) {
   const { user, loading } = useAuth()
@@ -50,6 +57,7 @@ export default function App() {
     <ToastProvider>
       <Routes>
         <Route path="/" element={<Root />} />
+        <Route path="/schools" element={<Schools />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
@@ -60,6 +68,10 @@ export default function App() {
         <Route path="/results/:id" element={<Protected><Results /></Protected>} />
         <Route path="/adaptive" element={<Protected><Adaptive /></Protected>} />
         <Route path="/doubts" element={<Protected><Doubts /></Protected>} />
+        <Route path="/groups" element={<Protected><Groups /></Protected>} />
+        <Route path="/focus" element={<Protected><FocusAreas /></Protected>} />
+        <Route path="/revision" element={<Protected><Revision /></Protected>} />
+        <Route path="/battles" element={<Protected><Battles /></Protected>} />
         <Route path="/bookmarks" element={<Protected><Bookmarks /></Protected>} />
         <Route path="/history" element={<Protected><History /></Protected>} />
         <Route path="/retention" element={<Protected><Retention /></Protected>} />
@@ -76,6 +88,8 @@ export default function App() {
         <Route path="/admin/reports" element={<Protected admin><AdminReports /></Protected>} />
         <Route path="/admin/settings" element={<Protected admin><AdminSettings /></Protected>} />
         <Route path="/admin/payments" element={<Protected admin><AdminPayments /></Protected>} />
+        <Route path="/admin/institutes" element={<Protected admin><AdminInstitutes /></Protected>} />
+        <Route path="/admin/institute" element={<Protected admin><InstituteDashboard /></Protected>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -37,7 +37,12 @@ const txContext = new AsyncLocalStorage()
 
 const TABLES_WITH_ID = new Set([
   'users', 'exams', 'subjects', 'chapters', 'topics', 'questions', 'tests',
-  'attempts', 'doubts', 'pdf_imports', 'ai_logs', 'notifications'
+  'attempts', 'doubts', 'pdf_imports', 'ai_logs', 'notifications', 'telegram_links',
+  'institutes', 'institute_invites', 'group_orders', 'group_messages',
+  'battle_rooms', 'battle_rounds', 'points_log'
+  // NOTE: composite-PK tables (group_members, battle_answers, focus_areas_cache,
+  // revision_state) intentionally NOT listed — they have no `id` column, so
+  // RETURNING id must not be added to their upserts.
 ])
 
 function translate(sql) {
@@ -405,6 +410,182 @@ CREATE TABLE IF NOT EXISTS ai_cache (
   data_json TEXT,
   created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
 );
+
+CREATE TABLE IF NOT EXISTS telegram_links (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  telegram_chat_id TEXT NOT NULL,
+  username TEXT,
+  linked_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_tg_chat ON telegram_links(telegram_chat_id);
+
+CREATE TABLE IF NOT EXISTS user_addons (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  addon_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  PRIMARY KEY (user_id, addon_id)
+);
+
+CREATE TABLE IF NOT EXISTS institutes (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  code TEXT UNIQUE NOT NULL,
+  contact_email TEXT,
+  logo_url TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS institute_id INTEGER REFERENCES institutes(id) ON DELETE SET NULL;
+-- 1v1 Battles ELO rating (default 1200 for everyone; 0 = never battled)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS elo INTEGER DEFAULT 0;
+-- FB-style recognition points (every action earns XP-like points)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0;
+
+-- Append-only recognition log: why each point batch was awarded. powers the
+-- "You earned +10" feed and weekly summaries without re-deriving events.
+CREATE TABLE IF NOT EXISTS points_log (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  points INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_points_log_user ON points_log (user_id, created_at DESC);
+
+-- White-label branding + B2B plan fields on institutes
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'trial';
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS plan_until TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS platform_name TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS tagline TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS primary_color TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS accent_color TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS custom_domain TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+
+-- Institute invite codes: students register with the code and are auto-linked
+-- to the institute (sub-admin = users row with role='admin' + institute_id).
+CREATE TABLE IF NOT EXISTS institute_invites (
+  id SERIAL PRIMARY KEY,
+  institute_id INTEGER NOT NULL REFERENCES institutes(id) ON DELETE CASCADE,
+  code TEXT UNIQUE NOT NULL,
+  label TEXT,
+  max_uses INTEGER DEFAULT 0,
+  used_count INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+-- ---------------------------------------------------------------------------
+-- Group Study & Discussions — students form groups; every N paying members
+-- unlock M free memberships (default: 2 paid -> 1 free, capped). The deal is
+-- enforced server-side and recalculated whenever a payment completes.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS group_orders (
+  id SERIAL PRIMARY KEY,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'study',
+  join_code TEXT UNIQUE NOT NULL,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id INTEGER NOT NULL REFERENCES group_orders(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
+  member_paid INTEGER DEFAULT 0,
+  payment_id INTEGER,
+  joined_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  PRIMARY KEY (group_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS group_messages (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES group_orders(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_group_messages_g ON group_messages(group_id, id);
+
+-- ---------------------------------------------------------------------------
+-- AI Focus Areas (#3) — ranked "most frequently asked" topics per exam, built
+-- purely from the platform's own legally-imported PYQ data (year/shift/topic).
+-- Cached for 7 days; refreshable by admins.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS focus_areas_cache (
+  exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+  data_json TEXT NOT NULL,
+  generated_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  PRIMARY KEY (exam_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- 1v1 Quiz Battles (#6) — realtime-feel duels over HTTP polling (no websocket
+-- server needed). Rooms have N timed rounds; each round is a shared question;
+-- both players answer; correct + faster = more points. ELO lives on the room.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS battle_rooms (
+  id SERIAL PRIMARY KEY,
+  exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL,
+  player1_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  player2_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'waiting',   -- waiting | active | finished | abandoned
+  rounds INTEGER NOT NULL DEFAULT 5,
+  current_round INTEGER NOT NULL DEFAULT 0,
+  topic_id INTEGER,
+  p1_score INTEGER NOT NULL DEFAULT 0,
+  p2_score INTEGER NOT NULL DEFAULT 0,
+  winner_id INTEGER,
+  rating_delta INTEGER NOT NULL DEFAULT 0,
+  join_code TEXT UNIQUE,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  finished_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS battle_rounds (
+  id SERIAL PRIMARY KEY,
+  room_id INTEGER NOT NULL REFERENCES battle_rooms(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL,
+  question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  round_started_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  round_ends_at TEXT NOT NULL,
+  UNIQUE (room_id, round_no)
+);
+
+CREATE TABLE IF NOT EXISTS battle_answers (
+  room_id INTEGER NOT NULL REFERENCES battle_rooms(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  selected TEXT,
+  is_correct INTEGER DEFAULT 0,
+  answer_ms INTEGER,
+  points INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  PRIMARY KEY (room_id, round_no, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_battle_answers_user ON battle_answers(user_id);
+
+-- ---------------------------------------------------------------------------
+-- Spaced Revision (#7) — forgetting-curve boxes per user+topic. The daily cron
+-- moves due topics back a box when the user hasn't practiced them; students
+-- see "aaj ye revise karo" from this table. Telegram nudges are rate-limited
+-- via last_nudged_at (max once per topic per day).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS revision_state (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  topic_id INTEGER NOT NULL,
+  box INTEGER NOT NULL DEFAULT 1,
+  last_reviewed_at TEXT,
+  last_nudged_at TEXT,
+  streak INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, topic_id)
+);
 `
 
 export async function initSchema() {
@@ -412,7 +593,7 @@ export async function initSchema() {
   const client = await pool.connect()
   try {
     await client.query(SCHEMA_SQL)
-    await client.query(`INSERT INTO schema_meta (key, value) VALUES ('version', '2.3.0') ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
+    await client.query(`INSERT INTO schema_meta (key, value) VALUES ('version', '2.5.0') ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
   } finally {
     client.release()
   }

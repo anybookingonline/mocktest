@@ -2,15 +2,18 @@ import express from 'express'
 import bcrypt from 'bcryptjs'
 import db from '../db.js'
 import { signToken, authRequired } from '../middleware/auth.js'
+import { authLimiter } from '../middleware/rateLimit.js'
+import { consumeInvite } from '../utils/institute.js'
+import { awardPoints } from '../utils/points.js'
 
 const router = express.Router()
 
 function publicUser(u) {
-  return { id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, exam_id: u.exam_id, target_exam: u.target_exam }
+  return { id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, exam_id: u.exam_id, target_exam: u.target_exam, institute_id: u.institute_id || null }
 }
 
-router.post('/register', async (req, res) => {
-  const { name, email, password, target_exam } = req.body || {}
+router.post('/register', authLimiter(), async (req, res) => {
+  const { name, email, password, target_exam, inviteCode } = req.body || {}
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
   if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
   const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(String(email).toLowerCase())
@@ -19,10 +22,23 @@ router.post('/register', async (req, res) => {
   const r = await db.prepare('INSERT INTO users (name, email, password_hash, role, target_exam) VALUES (?, ?, ?, ?, ?)')
     .run(name, String(email).toLowerCase(), hash, 'student', target_exam || null)
   const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid)
-  res.status(201).json({ token: signToken(user), user: publicUser(user) })
+  // White-label B2B: an institute invite code auto-links the new student to
+  // that institute (and is rejected if invalid/exhausted).
+  if (inviteCode) {
+    const linked = await consumeInvite({ userId: user.id, code: inviteCode })
+    if (!linked.ok) {
+      await db.prepare('DELETE FROM users WHERE id = ?').run(user.id)
+      return res.status(400).json({ error: linked.error })
+    }
+  }
+  const fresh = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)
+  // Welcome points — instant positive feedback on day one
+  await awardPoints(fresh.id, 'register')
+  if (inviteCode) await awardPoints(fresh.id, 'invite_accepted', { dedupe: `invite:${fresh.id}` })
+  res.status(201).json({ token: signToken(fresh), user: publicUser(fresh) })
 })
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter(), async (req, res) => {
   const { email, password } = req.body || {}
   const user = await db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase())
   if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash)) {

@@ -1,19 +1,36 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { api } from '../api/client.js'
 
 const STUDENT_NAV = [
   { to: '/', label: 'Dashboard', icon: '📊', group: 'Learn' },
   { to: '/practice', label: 'Practice', icon: '✏️' },
   { to: '/tests', label: 'Mock Tests', icon: '⏱️' },
   { to: '/adaptive', label: 'Adaptive Practice', icon: '🧠' },
+  { to: '/focus', label: 'AI Focus Areas', icon: '🔥' },
   { to: '/doubts', label: 'Doubt Solving', icon: '💬' },
+  { to: '/groups', label: 'Group Study', icon: '👥' },
+  { to: '/battles', label: 'Quiz Battles', icon: '⚔️' },
   { to: '/bookmarks', label: 'Bookmarked', icon: '🔖' },
   { to: '/history', label: 'Test History', icon: '🗂️' },
   { to: '/retention', label: 'Data Retention', icon: '🔒', group: 'Track' },
+  { to: '/revision', label: 'AI Revision', icon: '🔁' },
   { to: '/rankings', label: 'Rankings', icon: '🏆', group: 'Track' },
   { to: '/analytics', label: 'Analytics & Report', icon: '📈' }
 ]
+
+// Feature flags with a 60s module cache so every page mount doesn't re-fetch.
+let _flagsCache = null
+let _flagsAt = 0
+export function useFeatureFlags() {
+  const [flags, setFlags] = useState(_flagsCache || {})
+  useEffect(() => {
+    if (_flagsCache && Date.now() - _flagsAt < 60000) return
+    api.get('/ai/features').then((d) => { _flagsCache = d || {}; _flagsAt = Date.now(); setFlags(_flagsCache) }).catch(() => {})
+  }, [])
+  return flags
+}
 
 const ADMIN_NAV = [
   { to: '/admin', label: 'Dashboard', icon: '📊', group: 'Overview' },
@@ -25,6 +42,7 @@ const ADMIN_NAV = [
   { to: '/admin/users', label: 'Users', icon: '👥' },
   { to: '/admin/reports', label: 'Analytics & Reports', icon: '📈' },
   { to: '/admin/payments', label: 'Payments & Retention', icon: '💳', group: 'System' },
+  { to: '/admin/institutes', label: '🏫 Institutes (B2B)' },
   { to: '/admin/settings', label: 'Settings', icon: '⚙️' }
 ]
 
@@ -80,6 +98,16 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  // Recognition chip: live points + level in the topbar (students only)
+  const [pts, setPts] = useState(null)
+  useEffect(() => {
+    if (user?.role === 'admin') return
+    let live = true
+    const load = () => api.get('/analytics/points').then((d) => { if (live) setPts(d) }).catch(() => {})
+    load()
+    const t = setInterval(load, 60000)
+    return () => { live = false; clearInterval(t) }
+  }, [user?.role, user?.id])
   const initial = (user?.name || 'U').trim().charAt(0).toUpperCase()
 
   return (
@@ -100,6 +128,13 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
           <h1>{typeof title === 'function' ? title() : title}</h1>
           <div className="spacer" />
           <div className="user-chip">
+            {user?.role !== 'admin' && pts && (
+              <button className="chip" style={{ cursor: 'pointer', fontWeight: 700 }}
+                title={`${pts.level?.name} · Level ${pts.level?.level} · Global rank #${pts.globalRank}`}
+                onClick={() => navigate('/rankings')}>
+                {pts.level?.icon} {pts.total} pts
+              </button>
+            )}
             <span className="small muted">{user?.name}</span>
             <div className="avatar">{initial}</div>
             <button className="btn btn-ghost btn-sm" onClick={() => { logout(); navigate('/login') }}>Logout</button>
@@ -112,9 +147,22 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
 }
 
 export function StudentLayout({ title, children }) {
-  return <AppShell nav={STUDENT_NAV} title={title}>{children}</AppShell>
+  const flags = useFeatureFlags()
+  // Dynamic nav: admin-toggled features appear/disappear for students live.
+  const nav = STUDENT_NAV.filter((i) => {
+    if (i.to === '/groups') return Boolean(flags.groupStudy)
+    if (i.to === '/battles') return Boolean(flags.battles)
+    return true
+  })
+  return <AppShell nav={nav} title={title}>{children}</AppShell>
 }
 
 export function AdminLayout({ title, children }) {
-  return <AppShell nav={ADMIN_NAV} title={title}>{children}</AppShell>
+  const { user } = useAuth()
+  // Institute sub-admins (role=admin + institute_id) get ONLY their dashboard;
+  // platform admins (no institute_id) see the full panel.
+  const nav = user?.institute_id
+    ? ADMIN_NAV.filter((i) => i.to === '/admin/institute')
+    : ADMIN_NAV.filter((i) => i.to !== '/admin/institute')
+  return <AppShell nav={nav} title={title}>{children}</AppShell>
 }

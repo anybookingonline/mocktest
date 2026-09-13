@@ -5,15 +5,19 @@ import db from '../db.js'
 const seed = async () => {
   await db.initSchema()
 
-  // Admin + demo student
-  const adminHash = bcrypt.hashSync('admin123', 10)
-  const studentHash = bcrypt.hashSync('student123', 10)
-  await db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)
-    ON CONFLICT(email) DO NOTHING`)
-    .run('Admin', 'admin@examai.app', adminHash, 'admin')
-  await db.prepare(`INSERT INTO users (name, email, password_hash, role, target_exam) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(email) DO NOTHING`)
-    .run('Aarav Sharma', 'student@examai.app', studentHash, 'student', 'JEE Main')
+  // Admin account. Password comes from ADMIN_PASSWORD env (required in
+  // production — no public default). No demo student is seeded: users register
+  // themselves from the app, and the admin can create test users from
+  // Admin → Users.
+  const adminPassword = process.env.ADMIN_PASSWORD
+  if (!adminPassword) {
+    console.warn('[seed] ADMIN_PASSWORD not set — admin account NOT created (set it in backend/.env)')
+  } else {
+    const adminHash = bcrypt.hashSync(adminPassword, 10)
+    await db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)
+      ON CONFLICT(email) DO NOTHING`)
+      .run('Admin', 'admin@examai.app', adminHash, 'admin')
+  }
 
   // Default AI config (placeholders - user adds real keys in Admin > AI Config)
   const defaults = {
@@ -201,8 +205,8 @@ const seed = async () => {
   }
 
   console.log('Seed complete.')
-  console.log('  Admin login:  admin@examai.app / admin123')
-  console.log('  Student login: student@examai.app / student123')
+  console.log('  Admin login: admin@examai.app (password = ADMIN_PASSWORD env)')
+  console.log('  Students register in-app — no demo accounts are seeded.')
 }
 
 export { seed }

@@ -1,6 +1,8 @@
 import express from 'express'
 import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
+import { recordTopicOutcome } from '../utils/revision.js'
+import { awardPoints } from '../utils/points.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -114,13 +116,14 @@ router.post('/:id/answer', async (req, res) => {
   await db.prepare(`UPDATE attempts SET answers_json = ?, timeline_json = ?, duration_seconds = ? WHERE id = ?`)
     .run(JSON.stringify(answers), JSON.stringify(timeline), nowSec, a.id)
 
-  // update topic stats for weak-topic analysis
+  // update topic stats for weak-topic analysis + spaced-revision boxes (#7)
   const qmeta = await db.prepare('SELECT topic_id FROM questions WHERE id = ?').get(b.questionId)
   if (qmeta?.topic_id) {
     await db.prepare(`INSERT INTO topic_stats (user_id, topic_id, attempts, correct, total_time_sec) VALUES (?,?,1,?,?)
       ON CONFLICT(user_id, topic_id) DO UPDATE SET
         attempts = topic_stats.attempts + 1, correct = topic_stats.correct + excluded.correct, total_time_sec = topic_stats.total_time_sec + excluded.total_time_sec`)
       .run(req.user.id, qmeta.topic_id, isCorrect ? 1 : 0, Number(b.timeSpent) || 0)
+    await recordTopicOutcome(req.user.id, qmeta.topic_id, isCorrect)
   }
 
   res.json({ correct: isCorrect, answer: entry, pace: timeline[timeline.length - 1] })
@@ -167,7 +170,13 @@ router.post('/:id/complete', async (req, res) => {
   const updated = await db.prepare('SELECT * FROM attempts WHERE id = ?').get(a.id)
   // simple ranking computation
   await computeRankings(a.exam_id, req.user.id)
-  res.json({ attempt: updated })
+  // Recognition: complete a test -> points (+accuracy band bonus); perfect test extra
+  const pts = await awardPoints(req.user.id, 'test_completed', { meta: { accuracy, attemptId: a.id }, dedupe: `attempt:${a.id}` })
+  if (pts.ok && correct > 0 && correct === questions.length && questions.length >= 5) {
+    await awardPoints(req.user.id, 'perfect_test', { dedupe: `perfect:${a.id}` })
+  }
+  if (a.kind === 'revision') await awardPoints(req.user.id, 'revision_mock', { dedupe: `rev:${a.id}` })
+  res.json({ attempt: updated, points: pts.ok ? pts.awarded : 0 })
 })
 
 // POST /api/attempts/:id/pause | /resume

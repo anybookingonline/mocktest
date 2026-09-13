@@ -1,15 +1,63 @@
-# Supabase Postgres via IPv4 transaction pooler (required: sandbox has no IPv6 route)
-DATABASE_URL=postgresql://postgres.kyxwngsdpooqywsgqfeg:pBjhNre2lF20fljL@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+# ExamAI backend environment template.
+# Copy the real values into backend/.env (gitignored) or your host's env config.
+# NEVER commit real credentials — the previous committed values must be rotated.
+
+# Postgres connection string (required). Use your provider's IPv4-compatible
+# pooler URL for serverless/restricted networks.
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
 PGSSL=false
 PGPOOL_MAX=10
 
-# Upstash Redis (REST). Set REST_TOKEN to enable the Upstash cache; without it
-# the app transparently falls back to an in-process TTL cache.
-UPSTASH_REDIS_REST_URL=https://loving-satyr-186278.upstash.io
-UPSTASH_REDIS_REST_TOKEN=gQAAAAAAAtemAAIgcDE4NDYxOWFmYzg5NGI0ZTNjOWQ1MWFhNmMyN2UyZDFlOQ
+# Upstash Redis (REST) cache + shared rate-limit counters — optional. Without
+# REST_TOKEN the app falls back to an in-process TTL cache / per-instance limits.
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
+UPSTASH_REDIS_REST_TOKEN=
 
-# JWT signing secret (change in production)
-JWT_SECRET=examai-super-secret-change-me
+# JWT signing secret (required in production — long random string)
+JWT_SECRET=change-me-to-a-long-random-string
+
+# Seeded admin account password (required — no admin account is created
+# without it; the old 'admin123' default has been removed)
+ADMIN_PASSWORD=change-me
+
+# Daily revision cron secret — protects GET /api/revision/cron?secret=...
+# (decays stale revision boxes + sends Telegram "aaj ye revise karo" nudges)
+CRON_SECRET=
 
 # Backend port
 PORT=3001
+
+# Public URLs (payment redirects)
+FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:3001
+
+# ---------------------------------------------------------------------------
+# Backblaze B2 storage (optional). When set, PYQ/PDF papers and payment-proof
+# screenshots are archived to B2 (server-side encrypted) and served from the
+# public URL. Without it, files stay on local disk (fine for dev; ephemeral on
+# most hosts).
+# ---------------------------------------------------------------------------
+B2_KEY_ID=
+B2_APP_KEY=
+B2_BUCKET_ID=
+B2_BUCKET_NAME=
+# Optional custom domain / friendly URL base (e.g. https://cdn.yourdomain.com)
+B2_PUBLIC_BASE_URL=
+
+# ---------------------------------------------------------------------------
+# Rate limiting (optional — sane defaults built in). Set RATE_DISABLED=true to
+# turn the layer off (e.g. behind a load test).
+#   global : RATE_MAX_REQ requests per RATE_WINDOW_SEC per IP across /api
+#   auth   : RATE_AUTH_MAX attempts per RATE_AUTH_WINDOW_SEC per IP (login/register)
+#   ai     : RATE_AI_MAX AI calls per RATE_AI_WINDOW_SEC per user (doubts, mocks…)
+#   upload : RATE_UPLOAD_MAX uploads per RATE_UPLOAD_WINDOW_SEC (PDF imports)
+# ---------------------------------------------------------------------------
+RATE_DISABLED=false
+RATE_WINDOW_SEC=60
+RATE_MAX_REQ=120
+RATE_AUTH_WINDOW_SEC=900
+RATE_AUTH_MAX=15
+RATE_AI_WINDOW_SEC=60
+RATE_AI_MAX=10
+RATE_UPLOAD_WINDOW_SEC=3600
+RATE_UPLOAD_MAX=20

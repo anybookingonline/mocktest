@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
 import { loadMonetizationConfig, loadGatewayConfig, GATEWAYS, getRetentionStatus, activateRetention } from '../utils/retention.js'
+import { listPlans as listAddonPlans, ADDONS, activateAddon } from '../utils/addons.js'
+import { b2Configured, putFile } from '../utils/b2.js'
 import { getConfig } from '../utils/aiService.js'
 
 const router = Router()
@@ -35,27 +37,24 @@ function toDateStr(d) {
   return d.toISOString().replace('T', ' ').slice(0, 19)
 }
 
-// GET /api/payments/plans - public plan listing with enabled gateways
+// GET /api/payments/plans - plan listing (retention + paid add-ons) with enabled gateways
 router.get('/plans', async (req, res) => {
   const cfg = await loadMonetizationConfig()
+  const catalog = await listAddonPlans()
   res.json({
-    plans: [{
-      id: PLAN_ID,
-      name: '1-Year Data Retention',
-      description: 'Keep all your tests, results, doubts and bookmarks for 1 year. Free accounts have their data auto-deleted after 24 hours.',
-      price: cfg.price,
-      currency: cfg.currency,
-      retentionDays: cfg.retentionDays,
-      freeHoldHours: cfg.freeHoldHours
-    }],
+    plans: [...catalog.plans.map((p) => ({ ...p, currency: cfg.currency })), ...catalog.addons.map((a) => ({ ...a, currency: cfg.currency, kind: 'addon' }))],
+    addons: catalog.addons.map((a) => ({ ...a, currency: cfg.currency, kind: 'addon' })),
     provider: cfg.provider,
     gateways: cfg.gateways.map((g) => ({ id: g, label: GATEWAYS[g]?.label || g, icon: GATEWAYS[g]?.icon || '🔗' }))
   })
 })
 
-// GET /api/payments/my - current user retention status
+// GET /api/payments/my - current user retention + add-on entitlements
 router.get('/my', authRequired, async (req, res) => {
-  res.json(await getRetentionStatus(req.user.id))
+  const ret = await getRetentionStatus(req.user.id)
+  const { getEntitlements } = await import('../utils/addons.js')
+  const entitlements = await getEntitlements(req.user.id)
+  res.json({ ...ret, ...entitlements })
 })
 
 // POST /api/payments/create-order
@@ -67,19 +66,21 @@ router.post('/create-order', authRequired, async (req, res) => {
     return res.status(400).json({ error: `Payment gateway "${provider}" is not enabled. Ask admin to enable it.` })
   }
 
-  const amount = Number(cfg.price)
+  // Add-on plans price themselves; the retention plan uses the global price
+  const addonMeta = ADDONS[plan]
+  const amount = addonMeta ? Number(await getConfig(addonMeta.priceKey, String(addonMeta.defaultPrice))) : Number(cfg.price)
   const gwCfg = await loadGatewayConfig(provider)
 
   if (provider === 'razorpay') {
     if (!gwCfg.keyId || !gwCfg.keySecret) return res.status(400).json({ error: 'Razorpay is not configured. Ask admin to set the Razorpay key pair.' })
-    const order = await razorpayCreateOrder({ keyId: gwCfg.keyId, keySecret: gwCfg.keySecret, amount, currency: cfg.currency, receipt: `ret_${req.user.id}_${Date.now()}` })
+    const order = await razorpayCreateOrder({ keyId: gwCfg.keyId, keySecret: gwCfg.keySecret, amount, currency: cfg.currency, receipt: `${plan}_${req.user.id}_${Date.now()}` })
     await insertPayment({ userId: req.user.id, provider, amount, currency: cfg.currency, plan, ref: order.id })
     return res.json({ provider, orderId: order.id, keyId: gwCfg.keyId, plan, amount, currency: cfg.currency, name: req.user.name, email: req.user.email })
   }
 
   if (provider === 'stripe') {
     if (!gwCfg.secretKey) return res.status(400).json({ error: 'Stripe is not configured. Ask admin to set the Stripe secret key.' })
-    const session = await stripeCreateCheckout({ secret: gwCfg.secretKey, amount, currency: cfg.currency, userId: req.user.id, plan })
+    const session = await stripeCreateCheckout({ secret: gwCfg.secretKey, amount, currency: cfg.currency, userId: req.user.id, plan, productName: addonMeta ? `ExamAI ${addonMeta.name}` : 'ExamAI 1-Year Data Retention' })
     await insertPayment({ userId: req.user.id, provider, amount, currency: cfg.currency, plan, ref: session.id })
     return res.json({ provider, checkoutUrl: session.url, orderId: session.id, plan, amount, currency: cfg.currency })
   }
@@ -141,6 +142,14 @@ async function completeAndRespond(res, userId, provider, ref) {
   if (!pay) return res.status(404).json({ error: 'Order not found' })
   if (pay.user_id !== userId) return res.status(403).json({ error: 'Order does not belong to this user' })
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
+  if (isGroupPlan(pay.plan)) {
+    const out = await activateGroupPlan(pay)
+    return res.json({ active: true, addon: 'group_discussions', group: out })
+  }
+  if (ADDONS[pay.plan]) {
+    const until = await activateAddon(userId, pay.plan)
+    return res.json({ active: true, retainUntil: until, addon: pay.plan })
+  }
   const retainUntil = await activateRetention(userId, pay.plan)
   res.json({ active: true, retainUntil })
 }
@@ -172,7 +181,14 @@ router.post('/qr/proof', authRequired, proofUpload.single('file'), async (req, r
     if (req.file) fs.unlink(req.file.path, () => {})
     return res.status(400).json({ error: 'Order is not pending' })
   }
-  const proofPath = req.file ? `/uploads/${req.file.filename}` : pay.payment_proof
+  let proofPath = req.file ? `/uploads/${req.file.filename}` : pay.payment_proof
+  // Archive the proof to B2 when configured and swap in the public URL
+  if (req.file && b2Configured()) {
+    try {
+      const url = await putFile(req.file.path, { prefix: 'payment-proofs', filename: req.file.filename, contentType: req.file.mimetype })
+      if (url) proofPath = url
+    } catch (e) { console.error('[b2] proof upload failed:', e.message) }
+  }
   await db.prepare('UPDATE payments SET payment_proof = ?, txn_ref = ?, payer_name = ? WHERE id = ?')
     .run(proofPath, String(txnRef || pay.txn_ref || ''), String(payerName || pay.payer_name || ''), pay.id)
   res.json({ ok: true, message: 'Payment screenshot saved. Admin will verify and activate your retention shortly.' })
@@ -232,7 +248,26 @@ async function completePayment(provider, ref) {
   const pay = await db.prepare('SELECT * FROM payments WHERE provider_ref = ? AND provider = ? AND status = ?').get(ref, provider, 'pending')
   if (!pay) return
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
-  await activateRetention(pay.user_id, pay.plan)
+  if (isGroupPlan(pay.plan)) await activateGroupPlan(pay)
+  else if (ADDONS[pay.plan]) await activateAddon(pay.user_id, pay.plan)
+  else await activateRetention(pay.user_id, pay.plan)
+}
+
+// Group discussions plan: "group_discussions:<groupId>". Paying marks the
+// buyer as a paid member of that group and re-runs the free-seat deal engine.
+function isGroupPlan(plan) {
+  return /^group_discussions:\d+$/.test(String(plan || ''))
+}
+
+async function activateGroupPlan(pay) {
+  const groupId = Number(String(pay.plan).split(':')[1])
+  const g = await db.prepare('SELECT id FROM group_orders WHERE id = ?').get(groupId)
+  if (!g) throw new Error('Group not found for this payment')
+  // Group plan costs the same as the retention plan: the buyer gets their own
+  // paid membership too (data retention), plus a paid seat in the group.
+  await activateRetention(pay.user_id, 'retention_1y')
+  const { markMemberPaid } = await import('../utils/groups.js')
+  return markMemberPaid(groupId, pay.user_id, pay.id)
 }
 
 // GET /api/payments/admin/status - admin view of retention & payments
@@ -252,6 +287,14 @@ router.post('/admin/mark-paid', authRequired, adminOnly, async (req, res) => {
   const pay = await db.prepare('SELECT * FROM payments WHERE id = ? AND status = ?').get(paymentId, 'pending')
   if (!pay) return res.status(404).json({ error: 'Pending payment not found' })
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
+  if (isGroupPlan(pay.plan)) {
+    const out = await activateGroupPlan(pay)
+    return res.json({ ok: true, addon: 'group_discussions', group: out })
+  }
+  if (ADDONS[pay.plan]) {
+    const addonUntil = await activateAddon(pay.user_id, pay.plan)
+    return res.json({ ok: true, retainUntil: addonUntil, addon: pay.plan })
+  }
   const retainUntil = await activateRetention(pay.user_id, pay.plan)
   res.json({ ok: true, retainUntil })
 })
@@ -287,7 +330,7 @@ async function razorpayCreateOrder({ keyId, keySecret, amount, currency, receipt
   return data
 }
 
-async function stripeCreateCheckout({ secret, amount, currency, userId, plan }) {
+async function stripeCreateCheckout({ secret, amount, currency, userId, plan, productName = 'ExamAI 1-Year Data Retention' }) {
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
@@ -299,7 +342,7 @@ async function stripeCreateCheckout({ secret, amount, currency, userId, plan }) 
       'line_items[0][quantity]': '1',
       'line_items[0][price_data][currency]': String(currency).toLowerCase(),
       'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)),
-      'line_items[0][price_data][product_data][name]': 'ExamAI 1-Year Data Retention',
+      'line_items[0][price_data][product_data][name]': productName,
       'success_url': `${FRONTEND_URL}/retention?paid=success&gw=stripe`,
       'cancel_url': `${FRONTEND_URL}/retention?paid=cancelled&gw=stripe`,
       'client_reference_id': String(userId),

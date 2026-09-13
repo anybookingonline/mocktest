@@ -1,6 +1,7 @@
 import express from 'express'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
+import { aiLimiter } from '../middleware/rateLimit.js'
 import { generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
 
 const router = express.Router()
@@ -91,7 +92,7 @@ router.post('/', async (req, res) => {
 })
 
 // POST /api/tests/ai - generate full test with AI questions
-router.post('/ai', async (req, res) => {
+router.post('/ai', aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
   const b = req.body || {}
   if (!b.examId) return res.status(400).json({ error: 'examId required' })
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)

@@ -1,0 +1,5 @@
+# SPA fallback — serve index.html for all non-file routes.
+# API and /uploads are served same-origin by the backend when deployed
+# as a single service (see backend/src/app.js). For split hosting, add
+# a proxy rule for /api/* to your backend URL here or on your host.
+/*    /index.html    200

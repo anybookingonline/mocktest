@@ -1,6 +1,7 @@
 import express from 'express'
 import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
+import { pointsSummary, pointsLeaderboard } from '../utils/points.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -81,6 +82,34 @@ router.get('/rankings', async (req, res) => {
   res.json({ rankings: rows, me })
 })
 
+// GET /api/analytics/air?examId= — All-India-Rank view.
+// Rank is percentile-band based on completed attempts across the platform,
+// framed with total participants so "AIR #3 of 4,210" reads honestly.
+router.get('/air', async (req, res) => {
+  const examId = Number(req.query.examId)
+  if (!examId) return res.status(400).json({ error: 'examId required' })
+  // Everyone with >=1 completed attempt on this exam, best score per user.
+  const rows = await db.prepare(`
+    SELECT u.id user_id, u.name, MAX(a.score) best_score,
+      ROUND(AVG(a.accuracy)::numeric, 1) avg_accuracy, COUNT(a.id) tests
+    FROM attempts a JOIN users u ON u.id = a.user_id
+    WHERE a.exam_id = ? AND a.status = 'completed'
+    GROUP BY u.id, u.name ORDER BY best_score DESC, avg_accuracy DESC`).all(examId)
+  const total = rows.length
+  const rank = (i) => i + 1
+  const board = rows.slice(0, 100).map((r, i) => ({
+    ...r, rank: rank(i), tests: Number(r.tests),
+    percentile: total > 1 ? Math.max(1, Math.round(((total - i) / total) * 100)) : 100
+  }))
+  const myIdx = rows.findIndex((r) => Number(r.user_id) === Number(req.user.id))
+  const me = myIdx >= 0 ? {
+    rank: rank(myIdx), total,
+    percentile: total > 1 ? Math.max(1, Math.round(((total - myIdx) / total) * 100)) : 100,
+    bestScore: rows[myIdx].best_score, avgAccuracy: rows[myIdx].avg_accuracy, tests: Number(rows[myIdx].tests)
+  } : null
+  res.json({ board, me, total })
+})
+
 // GET /api/analytics/report - full detailed report for a user
 router.get('/report', async (req, res) => {
   const uid = req.user.id
@@ -101,6 +130,16 @@ router.get('/report', async (req, res) => {
     return { date: a.started_at, avgTimePerQ: speeds.length ? Math.round(speeds.reduce((x, y) => x + y, 0) / speeds.length) : 0, answered: counts }
   })
   res.json({ trend, kinds, speedTrend, totalAttempts: attempts.length })
+})
+
+// GET /api/analytics/points — recognition summary (level, weekly, recent feed)
+router.get('/points', async (req, res) => {
+  res.json(await pointsSummary(req.user.id))
+})
+
+// GET /api/analytics/points/leaderboard — recognition wall
+router.get('/points/leaderboard', async (req, res) => {
+  res.json(await pointsLeaderboard({ userId: req.user.id }))
 })
 
 export default router

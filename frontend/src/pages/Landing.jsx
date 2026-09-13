@@ -77,11 +77,10 @@ export default function Landing() {
         </div>
 
         <div className="card muted-bg mb" style={{ border: 'none', textAlign: 'center' }}>
-          <b>Ready when you are.</b>
-          <p className="small muted mt">Log in with the demo accounts or create your own — no payment needed.</p>
+          <b>Run your school or coaching on ExamAI</b>
+          <p className="small muted mt">White-label AI test platform — your brand, your tests, parent-ready progress reports. Free 30-day pilot.</p>
           <div className="row mt" style={{ justifyContent: 'center' }}>
-            <span className="chip">student@examai.app / student123</span>
-            <span className="chip">admin@examai.app / admin123</span>
+            <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 For Schools & Coaching →</button>
           </div>
         </div>
       </div>

@@ -20,7 +20,7 @@ cd ../frontend && npm install
 cd backend
 cp .env.example .env   # then fill in DATABASE_URL + optional UPSTASH_REDIS_REST_TOKEN
 
-# 3. Seed the database (creates admin/student demo accounts, 8 exams, syllabus, sample questions)
+# 3. Seed the database (creates the admin account, 8 exams, syllabus, sample questions)
 cd backend && node src/utils/seed.js
 
 # 4. Run both services (backend :3001, frontend :5173 with /api proxy)
@@ -42,12 +42,11 @@ The app runs on **PostgreSQL** (Supabase-ready). Set these in `backend/.env`:
 
 The schema is created automatically on server start (`initSchema`) and by `seed.js`; no manual migrations needed.
 
-### Demo accounts
+### Accounts
 
-| Role    | Email               | Password   |
-|---------|---------------------|------------|
-| Admin   | admin@examai.app    | admin123   |
-| Student | student@examai.app  | student123 |
+There are **no demo accounts**. The seed script creates only the admin account
+(password from the `ADMIN_PASSWORD` env var — required). Students register
+themselves from the app; test users can be created from **Admin → Users**.
 
 ---
 
@@ -60,8 +59,36 @@ Configure keys in the admin panel. Keys are stored in the database, never in the
 | **DeepSeek**  | Primary engine (generation, mocks, doubts, explanations) | platform.deepseek.com |
 | **Gemini**    | Fallback engine **and required for PDF Vision extraction** | aistudio.google.com |
 | **OpenRouter**| Optional provider with **free LLM models** (e.g. `deepseek/deepseek-chat-v3-0324:free`, `meta-llama/llama-3.3-70b-instruct:free`, `google/gemini-2.0-flash-exp:free`) | openrouter.ai |
+| **Custom**    | Any OpenAI-compatible API: Groq, Mistral, xAI (Grok), Together, Fireworks, Cerebras, local Ollama/vLLM — one-click presets in Admin → AI Config | varies |
 
-Routing: configured primary → automatic fallback chain → OpenRouter. Toggle fallback per your preference. Use **AI Config → "Test connection"** to verify.
+Routing: configured primary → automatic fallback chain (DeepSeek → Custom → Gemini → OpenRouter). Toggle fallback per your preference. Use **AI Config → "Test connection"** to verify.
+
+---
+
+## Storage (Backblaze B2, optional)
+
+Set `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET_ID` (or `B2_BUCKET_NAME`) and the app
+archives every uploaded **PDF/PYQ paper** and **payment-proof screenshot** to
+B2 with server-side encryption, serving them from `B2_PUBLIC_BASE_URL` if set.
+Without B2 configured, files stay on local disk (`backend/uploads/`) — fine for
+dev, ephemeral on most hosts.
+
+---
+
+## Rate limiting
+
+A sliding-window limiter protects the API (Upstash Redis when configured, so
+counts are shared across instances; in-process fallback otherwise):
+
+| Scope    | Default                  | Env vars                       |
+|----------|--------------------------|--------------------------------|
+| Global   | 120 req / 60s / IP       | `RATE_MAX_REQ`, `RATE_WINDOW_SEC` |
+| Auth     | 15 attempts / 15 min / IP| `RATE_AUTH_MAX`, `RATE_AUTH_WINDOW_SEC` |
+| AI calls | 10 req / 60s / user      | `RATE_AI_MAX`, `RATE_AI_WINDOW_SEC` |
+| Uploads  | 20 / hour / admin        | `RATE_UPLOAD_MAX`, `RATE_UPLOAD_WINDOW_SEC` |
+
+Blocked requests get `429` + `Retry-After`. `RATE_DISABLED=true` turns the layer
+off. The limiter fails open — a Redis outage never takes the API down.
 
 ---
 
@@ -121,3 +148,52 @@ Both AI-generated and imported questions land in the **same `questions` table** 
 - **Upstash Redis** cache layer (leaderboard/exam-list hot reads) with an automatic in-process TTL fallback, so the app works even without Redis.
 - Background PDF processing keeps the API responsive; dedup by file hash prevents redundant Gemini bills.
 - PWA-ready frontend (offline-capable service worker) with a mobile-responsive layout.
+
+---
+
+## Production Deployment
+
+### Option A — Single service (recommended)
+
+One Node service hosts both the API and the built frontend:
+
+```bash
+npm install && npm install --prefix backend
+npm run build --prefix frontend   # emits ../dist (repo root)
+PORT=8080 node backend/src/index.js
+```
+
+`backend/src/app.js` automatically serves `dist/` and falls back to `index.html`
+for SPA routes (anything outside `/api` and `/uploads`). The schema is created
+on boot; run `node backend/src/utils/seed.js` once against the production
+database (idempotent — safe to re-run).
+
+### Option B — Split hosting (static frontend + API backend)
+
+- **Frontend:** `npm run build --prefix frontend` → deploy `dist/` to any static
+  host. `frontend/public/_redirects` ships the SPA fallback; add a proxy rule for
+  `/api/*` and `/uploads/*` to your backend URL (the committed
+  `frontend/vercel.json` targets the reference Render deployment).
+- **Backend:** `npm start --prefix backend` (Render/Railway/Fly). Set `PORT`, and
+  `FRONTEND_URL` + `BACKEND_URL` for payment redirect flows.
+
+### Required environment
+
+| Variable | Notes |
+|----------|-------|
+| `DATABASE_URL` | Production Postgres — use the pooled, IPv4-reachable host. **Rotate credentials before launch** (the historical example file contained live creds). |
+| `JWT_SECRET` | Long random string — the default fallback is public in the repo. |
+| `ADMIN_PASSWORD` | Required — the admin account is only seeded when this is set. |
+| `PGSSL` / `PGPOOL_MAX` | TLS + pool size (see table above). |
+| `FRONTEND_URL` / `BACKEND_URL` | Public URLs, used by payment redirects. |
+| `B2_*` | Backblaze B2 credentials for durable PDF/proof storage (optional). |
+| `RATE_*` | Rate-limit tuning (optional — sane defaults). |
+| AI keys | Configured at runtime in **Admin → AI Config** (stored in DB, not env). |
+
+### Pre-launch checklist
+
+- [ ] Rotate the Postgres + Upstash credentials that were committed to `env-example`.
+- [ ] Set `ADMIN_PASSWORD` (no admin account exists without it) and a strong `JWT_SECRET`.
+- [ ] Configure B2 credentials for durable PDF/proof storage.
+- [ ] Seed the production database once, then verify `GET /api/health` (it reports cache + storage mode).
+- [ ] Run `node scripts/smoke-auth.mjs` against production to verify the auth flow end-to-end.

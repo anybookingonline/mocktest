@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useToast } from '../../components/ui.jsx'
 import { Brand } from '../../components/Layout.jsx'
+import { api } from '../../api/client.js'
 
 export function Splash() {
   return (
@@ -63,11 +64,6 @@ export function LoginPage() {
         <span className="tiny">New here?</span>
         <a href="/register" onClick={(e) => { e.preventDefault(); nav('/register') }}>Create account</a>
       </div>
-      <hr className="divider" />
-      <div className="row" style={{ justifyContent: 'center' }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => { setEmail('student@examai.app'); setPassword('student123'); toast('Demo student filled') }}>Demo Student</button>
-        <button className="btn btn-ghost btn-sm" onClick={() => { setEmail('admin@examai.app'); setPassword('admin123'); toast('Demo admin filled') }}>Demo Admin</button>
-      </div>
     </AuthShell>
   )
 }
@@ -76,17 +72,30 @@ export function RegisterPage() {
   const { register } = useAuth()
   const toast = useToast()
   const nav = useNavigate()
+  const [params] = useSearchParams()
+  const schCode = params.get('sch') || ''
+  const [invite, setInvite] = useState(null) // { institute: { name } }
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [target, setTarget] = useState('JEE Main')
+  const [inviteCode, setInviteCode] = useState(schCode)
   const [busy, setBusy] = useState(false)
+
+  // White-label B2B: /register?sch=SCH-XXXX validates the institute invite
+  // code up-front and shows the student which institute they're joining.
+  useEffect(() => {
+    if (!schCode) return
+    api.get(`/institutes/public/invite?code=${encodeURIComponent(schCode)}`)
+      .then((d) => setInvite(d))
+      .catch(() => setInvite({ valid: false }))
+  }, [schCode])
 
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
     try {
-      await register(name, email, password, target)
+      await register(name, email, password, target, inviteCode.trim() || undefined)
       toast('Account created!', 'ok')
       nav('/')
     } catch (err) {
@@ -96,6 +105,13 @@ export function RegisterPage() {
 
   return (
     <AuthShell title="Create your account" subtitle="Start free AI-powered practice today">
+      {schCode && invite && (
+        <div className="mb" style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${invite.valid ? 'var(--green)' : 'var(--red)'}`, background: 'var(--bg2)' }}>
+          {invite.valid
+            ? <span className="small">🏫 Joining <b>{invite.institute.name}</b> — account automatically linked!</span>
+            : <span className="small" style={{ color: 'var(--red)' }}>⚠️ Invite code invalid ya expired — bina code bhi register kar sakte ho.</span>}
+        </div>
+      )}
       <form onSubmit={submit}>
         <label className="field"><span>Full name</span>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -111,6 +127,11 @@ export function RegisterPage() {
             {['JEE Main', 'NEET UG', 'UPSC CSE', 'SSC CGL', 'Banking PO', 'CAT', 'GATE', 'CUET UG'].map((x) => <option key={x}>{x}</option>)}
           </select>
         </label>
+        {!schCode && (
+          <label className="field"><span>School / Coaching invite code (optional)</span>
+            <input className="input" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="SCH-XXXX" />
+          </label>
+        )}
         <button className="btn btn-accent" style={{ width: '100%' }} disabled={busy}>{busy ? 'Creating…' : 'Sign Up'}</button>
       </form>
       <div className="row mt" style={{ justifyContent: 'center' }}>

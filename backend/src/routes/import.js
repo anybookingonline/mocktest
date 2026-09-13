@@ -5,8 +5,10 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
+import { uploadLimiter } from '../middleware/rateLimit.js'
 import { extractPdfQuestions, structureExtractedQuestions, persistQuestions } from '../utils/aiTasks.js'
 import { hashContent } from '../utils/aiService.js'
+import { b2Configured, putFile } from '../utils/b2.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads')
@@ -28,7 +30,7 @@ const router = express.Router()
 router.use(authRequired)
 
 // POST /api/import/pdf - upload & process exam PDF via Gemini Vision + DeepSeek
-router.post('/pdf', adminOnly, upload.single('file'), async (req, res) => {
+router.post('/pdf', adminOnly, uploadLimiter(), upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF file required' })
   const examId = Number(req.body?.examId)
   if (!examId) return res.status(400).json({ error: 'examId required' })
@@ -38,6 +40,18 @@ router.post('/pdf', adminOnly, upload.single('file'), async (req, res) => {
   const buffer = fs.readFileSync(req.file.path)
   const fileHash = hashContent(buffer)
 
+  // Keep a durable archive copy in Backblaze B2 when configured (local disk is
+  // ephemeral on most hosts). The local file is still used for processing and
+  // removed after the import completes.
+  let storageUrl = null
+  if (b2Configured()) {
+    try {
+      storageUrl = await putFile(req.file.path, { prefix: 'pdfs', filename: req.file.originalname, contentType: 'application/pdf' })
+    } catch (e) {
+      console.error('[b2] PDF archive failed:', e.message) // non-fatal — processing continues
+    }
+  }
+
   // Reuse: same paper never processed twice
   const dup = await db.prepare(`SELECT * FROM pdf_imports WHERE file_hash = ? AND status = 'completed'`).get(fileHash)
   if (dup) {
@@ -46,7 +60,7 @@ router.post('/pdf', adminOnly, upload.single('file'), async (req, res) => {
   }
 
   const rec = await db.prepare(`INSERT INTO pdf_imports (exam_id, filename, file_path, file_hash, status, created_by)
-    VALUES (?,?,?,?,?,?)`).run(examId, req.file.originalname, req.file.path, fileHash, 'processing', req.user.id)
+    VALUES (?,?,?,?,?,?)`).run(examId, req.file.originalname, storageUrl || req.file.path, fileHash, 'processing', req.user.id)
   const importId = rec.lastInsertRowid
 
   res.status(202).json({ importId, message: 'PDF accepted. Processing in background with Gemini Vision + DeepSeek.' })
