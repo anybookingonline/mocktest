@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { BrandingProvider } from './context/BrandingContext.jsx'
+import InstallPrompt from './components/InstallPrompt.jsx'
 import './styles.css'
 
 if (import.meta.env.DEV) {
@@ -23,9 +25,12 @@ if (import.meta.env.DEV) {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrandingProvider>
+        <AuthProvider>
+          <App />
+          <InstallPrompt />
+        </AuthProvider>
+      </BrandingProvider>
     </BrowserRouter>
   </React.StrictMode>
 )

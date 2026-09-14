@@ -30,18 +30,44 @@ export const ADDONS = {
     defaultPrice: 49,
     daysKey: 'addons.voiceDays',
     defaultDays: 365
+  },
+  current_affairs: {
+    id: 'current_affairs',
+    name: 'Current Affairs Pro',
+    icon: '📰',
+    description: 'AI se roz ke current-affairs MCQs — exam-specific, fresh news par based. UPSC/Banking/SSC ke liye must.',
+    perks: ['Daily AI-generated CA quiz (10 Qs)', 'Exam-specific (UPSC/Banking/SSC focus)', 'Monthly revision compilations'],
+    priceKey: 'addons.caPrice',
+    defaultPrice: 99,
+    daysKey: 'addons.caDays',
+    defaultDays: 365
+  },
+  focus_areas: {
+    id: 'focus_areas',
+    name: 'AI Focus Areas',
+    icon: '🔥',
+    description: 'PYQ data ka deep analysis — kaunsa topic baar-baar poocha jata hai, priority ranking ke saath.',
+    perks: ['Topic-wise PYQ frequency ranking', 'Priority order for revision', 'Auto-refreshed weekly'],
+    priceKey: 'addons.focusPrice',
+    defaultPrice: 79,
+    daysKey: 'addons.focusDays',
+    defaultDays: 365
   }
 }
 
-// Combined plan catalog for the pricing page
+// Combined plan catalog for the pricing page. Add-ons whose
+// 'addons.<x>Enabled' flag is 'false' are hidden from students entirely.
 export async function listPlans() {
   const [retentionPrice, retentionDays, freeHold] = await Promise.all([
     getConfig('monetization.price', '499'),
     getConfig('monetization.retentionDays', '365'),
     getConfig('monetization.freeHoldHours', '24')
   ])
+  const enabledMap = { ai_power: 'addons.aiPowerEnabled', voice_doubts: 'addons.voiceEnabled', current_affairs: 'addons.caEnabled', focus_areas: 'addons.focusEnabled' }
   const addons = []
   for (const a of Object.values(ADDONS)) {
+    const enabledKey = enabledMap[a.id]
+    if (enabledKey && (await getConfig(enabledKey, 'true')) === 'false') continue
     const [price, days] = await Promise.all([getConfig(a.priceKey, String(a.defaultPrice)), getConfig(a.daysKey, String(a.defaultDays))])
     addons.push({ ...a, price: Number(price), days: Number(days), priceKey: undefined, daysKey: undefined })
   }
@@ -70,12 +96,14 @@ export async function activateAddon(userId, addonId) {
 export async function getEntitlements(userId) {
   const rows = await db.prepare(`SELECT addon_id, expires_at FROM user_addons WHERE user_id = ?`).all(userId)
   const now = Date.now()
-  const out = { aiPower: false, voiceDoubts: false, retention: false, addons: [] }
+  const out = { aiPower: false, voiceDoubts: false, currentAffairs: false, focusAreas: false, retention: false, addons: [] }
   for (const r of rows) {
     const active = new Date(r.expires_at.replace(' ', 'T') + 'Z').getTime() > now
     if (!active) continue
     if (r.addon_id === 'ai_power') out.aiPower = true
     if (r.addon_id === 'voice_doubts') out.voiceDoubts = true
+    if (r.addon_id === 'current_affairs') out.currentAffairs = true
+    if (r.addon_id === 'focus_areas') out.focusAreas = true
     out.addons.push({ id: r.addon_id, until: r.expires_at })
   }
   const ret = await db.prepare('SELECT retain_until FROM user_retention WHERE user_id = ?').get(userId)
@@ -87,6 +115,8 @@ export async function hasAddon(userId, addonId) {
   const e = await getEntitlements(userId)
   if (addonId === 'ai_power') return e.aiPower
   if (addonId === 'voice_doubts') return e.voiceDoubts
+  if (addonId === 'current_affairs') return e.currentAffairs
+  if (addonId === 'focus_areas') return e.focusAreas
   return e.addons.some((a) => a.id === addonId)
 }
 

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import db from '../db.js'
 import { signToken, authRequired } from '../middleware/auth.js'
 import { authLimiter } from '../middleware/rateLimit.js'
-import { consumeInvite } from '../utils/institute.js'
+import { consumeInvite, notifyLinked } from '../utils/institute.js'
 import { awardPoints } from '../utils/points.js'
 
 const router = express.Router()
@@ -35,6 +35,8 @@ router.post('/register', authLimiter(), async (req, res) => {
   // Welcome points — instant positive feedback on day one
   await awardPoints(fresh.id, 'register')
   if (inviteCode) await awardPoints(fresh.id, 'invite_accepted', { dedupe: `invite:${fresh.id}` })
+  // Best-effort Telegram welcome if this student has already linked the bot
+  notifyLinked(fresh.id, `🎓 Welcome to Aisepadho, ${fresh.name}! Account ready hai — login karo, target exam set karo aur pehla free test do.`).catch(() => {})
   res.status(201).json({ token: signToken(fresh), user: publicUser(fresh) })
 })
 

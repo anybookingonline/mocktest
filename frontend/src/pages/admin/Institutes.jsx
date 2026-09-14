@@ -15,8 +15,9 @@ export default function AdminInstitutes() {
   const [createModal, setCreateModal] = useState(false)
   const [subModal, setSubModal] = useState(false)
   const [csvModal, setCsvModal] = useState(false)
-  const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30 })
+  const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30, kind: 'coaching' })
   const [subForm, setSubForm] = useState({ name: '', email: '', password: '' })
+  const [subCreds, setSubCreds] = useState(null)
   const [csv, setCsv] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -43,18 +44,26 @@ export default function AdminInstitutes() {
       const d = await api.post('/institutes/admin/institutes', form)
       toast(`Institute created — code ${d.code}`, 'ok')
       setCreateModal(false)
-      setForm({ name: '', contactEmail: '', planDays: 30 })
+      setForm({ name: '', contactEmail: '', planDays: 30, kind: 'coaching' })
       load()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  const genPassword = () => {
+    // Pronounceable-but-strong default: word + digits + symbol
+    const words = ['Shikhar', 'Prayas', 'Neev', 'Unnati', 'Samarth', 'Pragati', 'Setu', 'Disha']
+    const w = words[Math.floor(Math.random() * words.length)]
+    const n = Math.floor(1000 + Math.random() * 9000)
+    return `${w}@${n}`
   }
 
   const addSubAdmin = async () => {
     if (!subForm.email || !subForm.password) return toast('Email + password required', 'err')
     setBusy(true)
     try {
-      await api.post(`/institutes/admin/institutes/${selected.institute.id}/subadmin`, subForm)
-      toast('Sub-admin created — credentials ko institute ko de dein', 'ok')
-      setSubModal(false)
+      const d = await api.post(`/institutes/admin/institutes/${selected.institute.id}/subadmin`, subForm)
+      toast('Sub-admin created — credentials niche copy karke institute ko bhejein', 'ok')
+      setSubCreds({ email: subForm.email, password: subForm.password, institute: selected.institute.platform_name || selected.institute.name })
       setSubForm({ name: '', email: '', password: '' })
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
@@ -101,6 +110,7 @@ export default function AdminInstitutes() {
             </div>
             <div className="tiny muted">{i.contact_email || '—'}</div>
             <div className="row mt">
+              <span className={`chip ${i.kind === 'school' ? 'blue' : ''}`}>{i.kind === 'school' ? '🏫 School' : '📚 Coaching'}</span>
               <span className="chip">{i.students} students</span>
               <span className="chip">{i.invites} invites</span>
               <span className="chip">till {fmtDate(i.plan_until)}</span>
@@ -171,22 +181,75 @@ export default function AdminInstitutes() {
               ))}
             </div>
           )}
+
+          <div className="card mb">
+            <b className="mb" style={{ display: 'block' }}>📋 Onboarding — 3 steps (institute ko bhejne ke liye)</b>
+            {(() => {
+              const active = invites.find((v) => v.is_active)
+              const link = active ? `${window.location.origin}/register?sch=${active.code}` : null
+              return (
+                <>
+                  <ol className="small" style={{ paddingLeft: 20, lineHeight: 2 }}>
+                    <li><b>Student link share karo:</b> students is link se register karenge — auto is institute me add ho jayenge:</li>
+                  </ol>
+                  {link && (
+                    <div className="spread" style={{ padding: '8px 10px', background: 'var(--panel2)', borderRadius: 8 }}>
+                      <code className="tiny" style={{ wordBreak: 'break-all' }}>{link}</code>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(link); toast('Link copied — WhatsApp par share karo', 'ok') }}>📋 Copy</button>
+                    </div>
+                  )}
+                  <ol className="small" start={2} style={{ paddingLeft: 20, lineHeight: 2 }}>
+                    <li><b>CSV shortcut:</b> bade batch ke liye owner ko sub-admin login do — wo apne dashboard se seedha CSV import kar dega (name,email,password per line).</li>
+                    <li><b>Telegram (optional):</b> students apne account ko bot se link kar len — phir doubts, revision reminders aur results sab Telegram par.</li>
+                  </ol>
+                </>
+              )
+            })()}
+          </div>
         </>
       )}
 
       <Modal open={createModal} onClose={() => setCreateModal(false)} title="🏫 New Institute"
         footer={<><button className="btn btn-ghost" onClick={() => setCreateModal(false)}>Cancel</button><button className="btn btn-primary" onClick={create} disabled={busy}>Create</button></>}>
         <label className="field"><span>Institute name</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Sunrise Coaching Classes" /></label>
+        <label className="field"><span>Type</span>
+          <select className="select" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+            <option value="coaching">📚 Coaching Institute</option>
+            <option value="school">🏫 School</option>
+          </select>
+        </label>
         <label className="field"><span>Contact email</span><input className="input" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} placeholder="owner@sunrise.com" /></label>
         <label className="field"><span>Trial days</span><input type="number" className="input" value={form.planDays} onChange={(e) => setForm({ ...form, planDays: e.target.value })} /></label>
       </Modal>
 
-      <Modal open={subModal} onClose={() => setSubModal(false)} title="👤 Institute Sub-Admin"
-        footer={<><button className="btn btn-ghost" onClick={() => setSubModal(false)}>Cancel</button><button className="btn btn-primary" onClick={addSubAdmin} disabled={busy}>Create</button></>}>
-        <p className="tiny muted mb">Sub-admin ko sirf is institute ke students dikhte hain — apna login milega.</p>
-        <label className="field"><span>Name</span><input className="input" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} /></label>
-        <label className="field"><span>Email</span><input className="input" value={subForm.email} onChange={(e) => setSubForm({ ...subForm, email: e.target.value })} /></label>
-        <label className="field"><span>Password</span><input className="input" value={subForm.password} onChange={(e) => setSubForm({ ...subForm, password: e.target.value })} /></label>
+      <Modal open={subModal} onClose={() => { setSubModal(false); setSubCreds(null) }} title="👤 Institute Sub-Admin"
+        footer={subCreds
+          ? <button className="btn btn-primary" onClick={() => { setSubModal(false); setSubCreds(null) }}>Done</button>
+          : <><button className="btn btn-ghost" onClick={() => setSubModal(false)}>Cancel</button><button className="btn btn-primary" onClick={addSubAdmin} disabled={busy}>Create</button></>}>
+        {subCreds ? (
+          <>
+            <p className="small mb">✅ Sub-admin ban gaya. Ye credentials <b>WhatsApp par bhej do</b> institute owner ko — baad me ye screen dobara nahi dikhegi:</p>
+            <div className="card muted-bg" style={{ fontFamily: 'monospace', lineHeight: 2 }}>
+              🌐 Login: <b>apni website ka /login</b><br />
+              📧 Email: <b>{subCreds.email}</b><br />
+              🔑 Password: <b>{subCreds.password}</b>
+            </div>
+            <p className="tiny muted mt">Login ke baad owner apna password /me page se change kar sakta hai. Isi credentials se wo /admin/institute par apna dashboard kholega.</p>
+          </>
+        ) : (
+          <>
+            <p className="tiny muted mb">Sub-admin ko sirf is institute ke students dikhte hain — apna login milega.</p>
+            <label className="field"><span>Name</span><input className="input" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} /></label>
+            <label className="field"><span>Email</span><input className="input" value={subForm.email} onChange={(e) => setSubForm({ ...subForm, email: e.target.value })} /></label>
+            <label className="field"><span>Password</span>
+              <div className="row">
+                <input className="input" value={subForm.password} onChange={(e) => setSubForm({ ...subForm, password: e.target.value })} />
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubForm({ ...subForm, password: genPassword() })}>🎲 Generate</button>
+              </div>
+            </label>
+            <p className="tiny muted">Create hone ke baad credentials copy-karne ka card milega.</p>
+          </>
+        )}
       </Modal>
 
       <Modal open={csvModal} onClose={() => setCsvModal(false)} title="⬆ Bulk CSV Import"

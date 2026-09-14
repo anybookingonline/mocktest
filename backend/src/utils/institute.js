@@ -2,6 +2,19 @@ import db from '../db.js'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 
+// Best-effort Telegram DM to a newly created/linked user. Never throws —
+// notification is a nice-to-have, the account always comes first.
+export async function notifyLinked(userId, text) {
+  try {
+    const link = await db.prepare('SELECT telegram_chat_id FROM telegram_links WHERE user_id = ?').get(Number(userId))
+    if (!link?.telegram_chat_id) return
+    const token = (await db.prepare(`SELECT value FROM ai_configs WHERE key = 'telegram.botToken'`).get())?.value
+    if (!token) return
+    const { sendTelegram } = await import('./revision.js')
+    await sendTelegram(link.telegram_chat_id, text)
+  } catch { /* best effort */ }
+}
+
 // ---------------------------------------------------------------------------
 // Coaching / School white-label (B2B SaaS).
 //
@@ -30,19 +43,20 @@ export async function listInstitutes() {
     FROM institutes i ORDER BY i.id DESC`).all()
 }
 
-export async function createInstitute({ name, contactEmail, planDays = 30 }) {
+export async function createInstitute({ name, contactEmail, planDays = 30, kind = 'coaching' }) {
   const clean = String(name || '').trim()
   if (!clean) return { error: 'Institute name required' }
   const code = instituteCode(clean)
   const until = new Date(Date.now() + (Number(planDays) || 30) * 86400000).toISOString().replace('T', ' ').slice(0, 19)
-  const r = await db.prepare(`INSERT INTO institutes (name, code, contact_email, plan, plan_until, status, created_at)
-    VALUES (?, ?, ?, 'trial', ?, 'active', to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))`)
-    .run(clean, code, contactEmail || null, until)
+  const kindClean = String(kind) === 'school' ? 'school' : 'coaching'
+  const r = await db.prepare(`INSERT INTO institutes (name, code, contact_email, kind, plan, plan_until, status, created_at)
+    VALUES (?, ?, ?, ?, 'trial', ?, 'active', to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))`)
+    .run(clean, code, contactEmail || null, kindClean, until)
   return { instituteId: Number(r.lastInsertRowid), code }
 }
 
 export async function updateInstitute(id, patch = {}) {
-  const allowed = ['name', 'contact_email', 'plan', 'plan_until', 'platform_name', 'tagline',
+  const allowed = ['name', 'contact_email', 'kind', 'plan', 'plan_until', 'platform_name', 'tagline',
     'primary_color', 'accent_color', 'logo_url', 'custom_domain', 'status']
   const sets = []
   const vals = []
@@ -108,16 +122,20 @@ export async function addSubAdmin({ instituteId, name, email, password }) {
   const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(clean)
   if (exists) return { error: 'Email already registered' }
   const hash = bcrypt.hashSync(String(password), 10)
+  const inst = await db.prepare('SELECT name, platform_name FROM institutes WHERE id = ?').get(Number(instituteId))
   const r = await db.prepare(`INSERT INTO users (name, email, password_hash, role, institute_id)
     VALUES (?, ?, ?, 'admin', ?)`).run(name || 'Institute Admin', clean, hash, Number(instituteId))
-  return { userId: Number(r.lastInsertRowid) }
+  return { userId: Number(r.lastInsertRowid), email: clean, instituteName: inst?.platform_name || inst?.name }
 }
 
 export async function bulkCreateStudents({ instituteId, csv }) {
   // CSV rows: name,email,password  (header optional, comma/semicolon separated)
   const lines = String(csv || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const inst = instituteId ? await db.prepare('SELECT name, platform_name FROM institutes WHERE id = ?').get(Number(instituteId)) : null
+  const appName = inst?.platform_name || inst?.name || (await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.name'`).get())?.value || 'Aisepadho'
   let created = 0
   const skipped = []
+  const newIds = []
   for (const line of lines) {
     const parts = line.split(/[,;]/).map((p) => p.trim())
     if (parts.length < 3) continue
@@ -127,9 +145,14 @@ export async function bulkCreateStudents({ instituteId, csv }) {
     const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(clean)
     if (exists) { skipped.push(clean); continue }
     const hash = bcrypt.hashSync(password, 10)
-    await db.prepare(`INSERT INTO users (name, email, password_hash, role, institute_id)
+    const r = await db.prepare(`INSERT INTO users (name, email, password_hash, role, institute_id)
       VALUES (?, ?, ?, 'student', ?)`).run(name.slice(0, 80), clean, hash, Number(instituteId))
+    newIds.push(Number(r.lastInsertRowid))
     created += 1
+  }
+  // Notify after the loop so a Telegram hiccup never blocks account creation
+  for (const id of newIds) {
+    notifyLinked(id, `🎓 Welcome to ${appName}! Aapka account ready hai. Email se login karo, phir apna target exam set karo. All the best!`).catch(() => {})
   }
   return { created, skipped }
 }
@@ -196,14 +219,17 @@ export async function resolveBranding({ host = null, inviteCode = null }) {
       .get(String(host).split(':')[0]) || null
   }
   const platform = await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.name'`).get()
+  const logo = await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.logoUrl'`).get()
+  const tagline = await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.tagline'`).get()
+  const support = await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.supportEmail'`).get()
   if (!inst) {
     return {
       institute: null,
-      platformName: platform?.value || 'ExamAI',
-      tagline: null,
+      platformName: platform?.value || 'Aisepadho',
+      tagline: tagline?.value || 'Padho. Test do. Aage badho.',
       primaryColor: null,
       accentColor: null,
-      logoUrl: null,
+      logoUrl: logo?.value || null,
       inviteCode: inviteCode || null
     }
   }

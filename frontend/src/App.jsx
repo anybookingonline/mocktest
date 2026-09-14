@@ -16,6 +16,7 @@ import Adaptive from './pages/student/Adaptive.jsx'
 import Doubts from './pages/student/Doubts.jsx'
 import Groups from './pages/student/Groups.jsx'
 import FocusAreas from './pages/student/FocusAreas.jsx'
+import CurrentAffairs from './pages/student/CurrentAffairs.jsx'
 import Revision from './pages/student/Revision.jsx'
 import Battles from './pages/student/Battles.jsx'
 import Bookmarks from './pages/student/Bookmarks.jsx'
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/doubts" element={<Protected><Doubts /></Protected>} />
         <Route path="/groups" element={<Protected><Groups /></Protected>} />
         <Route path="/focus" element={<Protected><FocusAreas /></Protected>} />
+        <Route path="/current-affairs" element={<Protected><CurrentAffairs /></Protected>} />
         <Route path="/revision" element={<Protected><Revision /></Protected>} />
         <Route path="/battles" element={<Protected><Battles /></Protected>} />
         <Route path="/bookmarks" element={<Protected><Bookmarks /></Protected>} />

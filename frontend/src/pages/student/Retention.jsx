@@ -291,14 +291,14 @@ export default function Retention() {
           )
         })}
 
-        {/* ------------------------------ Focus Areas teaser ------------------------------ */}
+        {/* ------------------------------ Add-on value notes ------------------------------ */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ fontSize: 30 }}>🔥</div>
-          <b className="small mt mb" style={{ display: 'block' }}>AI Focus Areas — Pro exclusive</b>
+          <div style={{ fontSize: 30 }}>🧩</div>
+          <b className="small mt mb" style={{ display: 'block' }}>Kya kaise unlock hota hai?</b>
           <p className="tiny muted" style={{ flex: 1 }}>
-            Pichhle saalon ke papers se AI nikalta hai ki kaunse topics sabse zyada pooche jate hain — wahi pehle master karo. Kisi bhi paid plan ke saath unlock.
+            Koi bhi paid plan ya add-on lene par AI Focus Areas automatically unlock ho jata hai. Current Affairs Pro alag add-on hai — sirf CA quiz ke liye. Plans aapke admin ke set kiye pricing par hain.
           </p>
-          <Link to="/focus" className="btn btn-ghost btn-sm">Preview →</Link>
+          <Link to="/focus" className="btn btn-ghost btn-sm">🔥 Focus preview →</Link>
         </div>
 
         {/* ------------------------------ Why upgrade ------------------------------ */}

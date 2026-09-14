@@ -101,8 +101,8 @@ export async function getFocusAreas(examId, { force = false } = {}) {
 }
 
 export async function isFocusUnlocked(userId) {
-  // Pro-exclusive: any paid entitlement unlocks Focus Areas.
+  // Unlocked by the dedicated focus_areas add-on OR any base paid entitlement.
   const { getEntitlements } = await import('./addons.js')
   const ent = await getEntitlements(userId)
-  return Boolean(ent.retention || ent.aiPower || ent.voiceDoubts)
+  return Boolean(ent.focusAreas || ent.retention || ent.aiPower || ent.voiceDoubts)
 }

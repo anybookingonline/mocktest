@@ -94,14 +94,17 @@ router.get('/reports', async (req, res) => {
 
 // GET /api/admin/settings
 router.get('/settings', async (req, res) => {
-  const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
+  const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'platform.logoUrl', 'platform.domain', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'monetization.gateways', 'monetization.provider', 'monetization.price', 'monetization.currency', 'monetization.retentionDays', 'monetization.freeHoldHours',
     'addons.aiPowerPrice', 'addons.aiPowerDays', 'addons.voicePrice', 'addons.voiceDays',
+    'addons.caPrice', 'addons.caDays', 'addons.focusPrice', 'addons.focusDays',
+    'features.currentAffairs', 'features.focusAreas',
     'features.groupStudy', 'features.groupDiscussions', 'features.battles',
     'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays',
     'razorpay.keyId', 'razorpay.keySecret', 'stripe.secretKey', 'stripe.webhookSecret',
     'phonepe.merchantId', 'phonepe.saltKey', 'phonepe.saltIndex', 'phonepe.env', 'phonepe.baseUrl',
-    'qr.upiId', 'qr.qrImage', 'qr.holderName', 'qr.note']
+    'qr.upiId', 'qr.qrImage', 'qr.holderName', 'qr.note',
+    'telegram.botToken', 'telegram.botUsername', 'telegram.webhookDomain']
   const out = {}
   for (const k of keys) out[k] = (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || ''
   res.json({ settings: out })
@@ -110,7 +113,11 @@ router.get('/settings', async (req, res) => {
 // PUT /api/admin/settings
 router.put('/settings', async (req, res) => {
   const b = req.body || {}
+  // Secret-shaped keys are never cleared by an empty save — an admin leaving
+  // the (masked/blank) field untouched must not wipe a live bot/payment key.
+  const SECRET_KEY = /(botToken|apiKey|keySecret|secretKey|webhookSecret|saltKey)$/
   for (const [k, v] of Object.entries(b)) {
+    if (SECRET_KEY.test(k) && !String(v).trim()) continue
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, String(v))
   }
   res.json({ saved: true })

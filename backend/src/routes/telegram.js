@@ -5,6 +5,12 @@ import { solveDoubtWithAI } from '../utils/aiTasks.js'
 import { getEntitlements } from '../utils/addons.js'
 import { aiLimiter } from '../middleware/rateLimit.js'
 
+// White-label: the bot speaks with the platform's (or institute's) name.
+async function brandName() {
+  const s = await db.prepare(`SELECT value FROM ai_configs WHERE key = 'platform.name'`).get()
+  return s?.value || 'Aisepadho'
+}
+
 // ---------------------------------------------------------------------------
 // Telegram tutor bot (official Bot API, no SDK). Feature-flagged: the webhook
 // answers only when admin enables it AND a bot token is configured.
@@ -18,7 +24,7 @@ const router = Router()
 const DAILY_FREE = 10
 
 const HELP = [
-  '🎓 *ExamAI Tutor* — aapke doubts, seedha Telegram par',
+  '🎓 *Tutor Bot* — aapke doubts, seedha Telegram par',
   '',
   'Kisi bhi question ya concept ka doubt Hindi/English/Hinglish me type karo — main turant jawab dunga.',
   '',
@@ -56,7 +62,7 @@ async function handleUpdate(update) {
 
   if (text.startsWith('/start')) {
     const code = text.split(/\s+/)[1]
-    if (!code) return send(chatId, 'Link code missing. Apne ExamAI app → Doubts page par code milega. Wahan se /start CODE bhejo.')
+    if (!code) return send(chatId, `Link code missing. Apne ${await brandName()} app → Doubts page par code milega. Wahan se /start CODE bhejo.`)
     const row = await db.prepare('SELECT user_id FROM ai_configs WHERE key LIKE ? AND value = ?')
       .all('tgcode:%', code).catch(() => [])
     // Deterministic codes: recompute instead of storing — match against users
@@ -79,7 +85,7 @@ async function handleUpdate(update) {
 
   const link = await db.prepare('SELECT user_id FROM telegram_links WHERE telegram_chat_id = ?').get(chatId)
   if (!link) {
-    return send(chatId, 'Pehle account link karo: /start CODE (code ExamAI app → Doubts page par hai).')
+    return send(chatId, `Pehle account link karo: /start CODE (code ${await brandName()} app → Doubts page par hai).`)
   }
 
   if (text === '/help' || text === '/start') return send(chatId, HELP)
@@ -126,10 +132,19 @@ router.post('/webhook', aiLimiter({ max: 60, windowSec: 60 }), async (req, res) 
 })
 
 // Admin helpers: wire the webhook URL + send a test message
+//
+// Webhook URL resolution (in priority order):
+//   1. `telegram.webhookDomain` admin setting — e.g. https://aisepadho.com
+//      (set this when the bot was created against a different host, like the
+//      Vercel frontend domain: Telegram only needs ONE public HTTPS URL and
+//      the frontend already proxies /api/* to the backend)
+//   2. BACKEND_URL env
+//   3. the request's own origin (same-host deployments)
 router.post('/admin/setup', authRequiredAdmin, async (req, res) => {
   const token = await getConfig('telegram.botToken')
   if (!token) return res.status(400).json({ error: 'telegram.botToken not configured' })
-  const base = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
+  const override = (await getConfig('telegram.webhookDomain') || '').trim().replace(/\/$/, '')
+  const base = override || process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
   const url = `${base}/api/telegram/webhook`
   const whSecret = Math.random().toString(36).slice(2, 14)
   const apiRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
@@ -147,7 +162,7 @@ router.post('/admin/test', authRequiredAdmin, async (req, res) => {
   const token = await getConfig('telegram.botToken')
   const chatId = req.body?.chatId
   if (!token || !chatId) return res.status(400).json({ error: 'botToken + chatId required' })
-  const r = await send(String(chatId), '✅ ExamAI Telegram bot test — wiring works!')
+  const r = await send(String(chatId), `✅ ${(await brandName())} Telegram bot test — wiring works!`)
   res.json({ ok: r !== false })
 })
 

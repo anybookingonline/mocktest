@@ -52,7 +52,7 @@ export async function getAiSettings() {
   const keys = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model',
     'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
-    'features.voiceDoubts', 'features.telegramBot', 'features.groupStudy', 'features.groupDiscussions', 'features.battles', 'openai.apiKey', 'telegram.botToken',
+    'features.voiceDoubts', 'features.telegramBot', 'features.groupStudy', 'features.groupDiscussions', 'features.battles', 'features.currentAffairs', 'features.focusAreas', 'openai.apiKey', 'telegram.botToken',
     'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays']
   const out = {}
   for (const k of keys) out[k] = await getConfig(k, '')
@@ -68,7 +68,9 @@ export async function getFeatureFlags() {
     telegramBot: s['features.telegramBot'] === 'true' && Boolean(s['telegram.botToken']),
     groupStudy: s['features.groupStudy'] === 'true',
     groupDiscussions: s['features.groupDiscussions'] === 'true',
-    battles: s['features.battles'] === 'true'
+    battles: s['features.battles'] === 'true',
+    currentAffairs: s['features.currentAffairs'] === 'true',
+    focusAreas: s['features.focusAreas'] === 'true'
   }
 }
 

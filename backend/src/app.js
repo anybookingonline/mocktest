@@ -42,6 +42,7 @@ import groupRoutes from './routes/groups.js'
 import focusRoutes from './routes/focus.js'
 import revisionRoutes from './routes/revision.js'
 import battleRoutes from './routes/battles.js'
+import caRoutes from './routes/currentAffairs.js'
 import instituteRoutes from './routes/institutes.js'
 import { purgeExpiredData } from './utils/retention.js'
 
@@ -93,6 +94,7 @@ app.use('/api/groups', groupRoutes)
 app.use('/api/focus', focusRoutes)
 app.use('/api/revision', revisionRoutes)
 app.use('/api/battles', battleRoutes)
+app.use('/api/ca', caRoutes)
 app.use('/api/institutes', instituteRoutes)
 
 // Serve the built frontend (single-origin deployment: one service hosts API + UI)

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, Modal, useToast, fmtDuration } from '../../components/ui.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 export default function Adaptive() {
   const nav = useNavigate()
@@ -21,6 +22,9 @@ export default function Adaptive() {
   const [elapsed, setElapsed] = useState(0)
   const [streak, setStreak] = useState(0)
   const [startedAt, setStartedAt] = useState(null)
+  const [relaxedNote, setRelaxedNote] = useState(false)
+  const [aiGenNote, setAiGenNote] = useState(false)
+  const { user, updateUser } = useAuth()
 
   useEffect(() => { api.get('/exams').then((d) => setExams(d.exams)) }, [])
   useEffect(() => {
@@ -29,18 +33,32 @@ export default function Adaptive() {
   }, [cfg.examId])
 
   const chapters = syllabus.flatMap((s) => s.chapters.map((c) => ({ ...c, subject: s.name })))
+  const topics = chapters.flatMap((c) => c.topics.map((t) => ({ ...t, chapter: c.name })))
+
+  // Preselect the exam the student chose at signup (Dashboard se aaye to bhi)
+  useEffect(() => {
+    if (!cfg.examId && user?.exam_id && exams.length) {
+      setCfg((c) => ({ ...c, examId: String(user.exam_id) }))
+    }
+  }, [user, exams])
 
   const start = async () => {
     if (!cfg.examId) { toast('Select an exam', 'err'); return }
     setBusy(true)
     try {
-      const d = await api.post('/ai/adaptive/start', { examId: Number(cfg.examId), chapterId: cfg.chapterId ? Number(cfg.chapterId) : null, topicId: cfg.topicId ? Number(cfg.topicId) : null, numQuestions: Number(cfg.num) })
+      const d = await api.post('/ai/adaptive/start', { examId: Number(cfg.examId), subjectId: null, chapterId: cfg.chapterId ? Number(cfg.chapterId) : null, topicId: cfg.topicId ? Number(cfg.topicId) : null, numQuestions: Number(cfg.num) })
+      // remember the student's exam choice for next time
+      if (String(user?.exam_id) !== String(cfg.examId)) {
+        api.put('/auth/me', { exam_id: Number(cfg.examId), target_exam: exams.find((e) => String(e.id) === String(cfg.examId))?.name || null }).catch(() => {})
+        updateUser({ exam_id: Number(cfg.examId) })
+      }
       setSessionId(d.attemptId)
       setProgress({ completed: 0, total: Number(cfg.num) })
       setScore(0); setDone(false); setResult(null); setStreak(0)
       setStartedAt(Date.now())
       const next = await api.post(`/ai/adaptive/${d.attemptId}/next`, {})
       setQuestion(next.question); setLevel(next.level); setProgress({ completed: next.completed, total: next.total })
+      setAiGenNote(Boolean(next.aiGenerated)); setRelaxedNote(Boolean(next.relaxed))
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
 
@@ -74,6 +92,7 @@ export default function Adaptive() {
       setQuestion(next.question)
       setResult(null)
       setStartedAt(Date.now())
+      setAiGenNote(Boolean(next.aiGenerated)); setRelaxedNote(Boolean(next.relaxed))
     }
   }
 
@@ -90,6 +109,7 @@ export default function Adaptive() {
     <StudentLayout title="Adaptive Practice">
       <div className="card mb">
         <p className="small muted">🧠 Difficulty auto-adjusts to your level. Answer correctly and the questions get harder; miss and they get easier.</p>
+        <p className="tiny muted" style={{ marginTop: 4 }}>Khali topics par bhi chalega — AI turant naye questions bana deta hai. Subject/Chapter/Topic filter lagao ya poore exam par practice karo.</p>
       </div>
 
       {!sessionId && (
@@ -105,6 +125,14 @@ export default function Adaptive() {
               <select className="select" value={cfg.chapterId} onChange={(e) => setCfg({ ...cfg, chapterId: e.target.value, topicId: '' })}>
                 <option value="">All chapters</option>
                 {chapters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className="field"><span>Topic (optional)</span>
+              <select className="select" value={cfg.topicId} onChange={(e) => setCfg({ ...cfg, topicId: e.target.value })}>
+                <option value="">All topics</option>
+                {(cfg.chapterId ? topics.filter((t) => String(t.chapter_id) === String(cfg.chapterId)) : topics).map((t) => (
+                  <option key={t.id} value={t.id}>{cfg.chapterId ? t.name : `${t.chapter} — ${t.name}`}</option>
+                ))}
               </select>
             </label>
             <label className="field"><span>Questions</span>
@@ -124,6 +152,8 @@ export default function Adaptive() {
             <span className="chip">⏱️ {fmtDuration(elapsed)}</span>
           </div>
           <div className="row">
+            {relaxedNote && <Badge kind="amber">Scope wide ho gaya — poore exam se questions</Badge>}
+            {aiGenNote && <Badge kind="purple">✨ AI ne fresh questions banaye</Badge>}
             <Badge kind="blue">{progress.completed}/{progress.total} solved</Badge>
             <Badge kind="green">{score} pts</Badge>
           </div>

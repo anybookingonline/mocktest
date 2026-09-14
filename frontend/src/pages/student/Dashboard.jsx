@@ -6,12 +6,13 @@ import { Badge, Progress, Skeleton, fmtDuration, statColor, timeAgo } from '../.
 import { useAuth } from '../../context/AuthContext.jsx'
 
 export default function Dashboard() {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const nav = useNavigate()
   const [data, setData] = useState(null)
   const [exams, setExams] = useState([])
   const [tests, setTests] = useState([])
   const [recs, setRecs] = useState([])
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     api.get('/analytics/overview').then(setData).catch(() => {})
@@ -22,6 +23,16 @@ export default function Dashboard() {
 
   const acc = data ? Math.round((data.totalCorrect / Math.max(1, data.totalQuestions)) * 100) : 0
 
+  // The exam the student picked at signup drives the whole dashboard.
+  const targetExam = exams.find((e) => String(e.id) === String(user?.exam_id)) ||
+    exams.find((e) => e.name && user?.target_exam && e.name.toLowerCase().includes(String(user.target_exam).toLowerCase())) || null
+  const otherExams = targetExam ? exams.filter((e) => e.id !== targetExam.id) : exams
+
+  const setExam = (e) => {
+    updateUser({ exam_id: e.id, target_exam: e.name })
+    api.put('/auth/me', { exam_id: e.id, target_exam: e.name }).catch(() => {})
+  }
+
   return (
     <StudentLayout title="Dashboard">
       <div className="card mb" style={{ background: 'linear-gradient(120deg, rgba(99,102,241,0.22), rgba(34,211,238,0.12))', border: '1px solid rgba(99,102,241,0.35)' }}>
@@ -30,12 +41,12 @@ export default function Dashboard() {
             <h2>Namaste, {user?.name?.split(' ')[0]} 👋</h2>
             <p className="muted small">Keep your pace steady. Your streak builds with every solved question.</p>
           </div>
-          <button className="btn btn-primary" onClick={() => nav(tests.length ? `/tests` : '/tests')}>Take a Mock Test →</button>
+          <button className="btn btn-primary" onClick={() => nav(targetExam ? `/practice?exam=${targetExam.id}` : '/adaptive')}>Take a Mock Test →</button>
         </div>
       </div>
 
       <div className="grid grid-4 mb">
-        <div className="card stat"><span className="label">Tests completed</span><span className="value">{data ? data.totalTests : <Skeleton h={30} />}</span><span className="sub">across all exams</span></div>
+        <div className="card stat"><span className="label">Tests completed</span><span className="value">{data ? data.totalTests : <Skeleton h={30} />}</span><span className="sub">{targetExam ? targetExam.name : 'across all exams'}</span></div>
         <div className="card stat"><span className="label">Questions solved</span><span className="value">{data ? data.totalQuestions : <Skeleton h={30} />}</span><span className="sub">{data?.totalCorrect} correct</span></div>
         <div className="card stat"><span className="label">Overall accuracy</span><span className="value">{data ? `${acc}%` : <Skeleton h={30} />}</span><span className="sub">{data ? `${data.avgScore} avg score` : ''}</span></div>
         <div className="card stat"><span className="label">Total time</span><span className="value">{data ? fmtDuration(data.totalTime) : <Skeleton h={30} />}</span><span className="sub">in exams</span></div>
@@ -43,18 +54,56 @@ export default function Dashboard() {
 
       <div className="grid" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
         <div className="col">
-          <div className="card">
-            <div className="spread mb"><b>Choose your exam</b><Link className="small" to="/tests">See mock tests →</Link></div>
-            <div className="grid grid-4">
-              {exams.map((e) => (
-                <div key={e.id} className="card hover" style={{ padding: 14, textAlign: 'center', cursor: 'pointer' }} onClick={() => nav(`/practice?exam=${e.id}`)}>
-                  <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
-                  <b className="small" style={{ display: 'block' }}>{e.name}</b>
-                  <div className="tiny">{e.total_questions} Q · {e.duration_minutes} min</div>
+          {targetExam ? (
+            // Target-exam focused: one hero card + collapsible other exams.
+            <div className="card">
+              <div className="spread mb">
+                <div>
+                  <b>🎯 Aapka target: {targetExam.name}</b>
+                  <div className="tiny muted">{targetExam.total_questions} Q · {targetExam.duration_minutes} min · {targetExam.marks_per_question} mark/Q</div>
                 </div>
-              ))}
+                <div className="row">
+                  <button className="btn btn-primary btn-sm" onClick={() => nav(`/practice?exam=${targetExam.id}`)}>Practice start karo →</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => nav(`/adaptive?exam=${targetExam.id}`)}>🧠 Adaptive</button>
+                </div>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => nav(`/tests?exam=${targetExam.id}`)}>📋 Mock tests</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => nav('/revision')}>🔁 Aaj revise karo</button>
+              </div>
+              <div className="mt">
+                <div className="spread tiny mb">
+                  <span className="muted">Dusre exams me practice karni hai?</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowAll((v) => !v)}>{showAll ? 'Hide ↑' : 'Show all exams ↓'}</button>
+                </div>
+                {showAll && (
+                  <div className="grid grid-4">
+                    {otherExams.map((e) => (
+                      <div key={e.id} className="card hover" style={{ padding: 14, textAlign: 'center', cursor: 'pointer', opacity: 0.85 }} onClick={() => setExam(e)}>
+                        <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
+                        <b className="small" style={{ display: 'block' }}>{e.name}</b>
+                        <div className="tiny">{e.total_questions} Q · {e.duration_minutes} min</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            // No target set (old accounts): show all exams and let them pick.
+            <div className="card">
+              <div className="spread mb"><b>Choose your exam</b><Link className="small" to="/tests">See mock tests →</Link></div>
+              <div className="grid grid-4">
+                {exams.map((e) => (
+                  <div key={e.id} className="card hover" style={{ padding: 14, textAlign: 'center', cursor: 'pointer' }} onClick={() => setExam(e)}>
+                    <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
+                    <b className="small" style={{ display: 'block' }}>{e.name}</b>
+                    <div className="tiny">{e.total_questions} Q · {e.duration_minutes} min</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {data?.recent?.length > 0 && (
             <div className="card">

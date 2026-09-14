@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { BrandLogo } from '../context/BrandingContext.jsx'
 import { api } from '../api/client.js'
 
 const STUDENT_NAV = [
@@ -9,6 +10,7 @@ const STUDENT_NAV = [
   { to: '/tests', label: 'Mock Tests', icon: '⏱️' },
   { to: '/adaptive', label: 'Adaptive Practice', icon: '🧠' },
   { to: '/focus', label: 'AI Focus Areas', icon: '🔥' },
+  { to: '/current-affairs', label: 'Current Affairs', icon: '📰' },
   { to: '/doubts', label: 'Doubt Solving', icon: '💬' },
   { to: '/groups', label: 'Group Study', icon: '👥' },
   { to: '/battles', label: 'Quiz Battles', icon: '⚔️' },
@@ -47,21 +49,11 @@ const ADMIN_NAV = [
 ]
 
 export function Brand({ onClick }) {
+  // White-label: name/logo/colors come from the branding provider (platform
+  // settings, or the institute's branding when viewing via their domain/link)
   return (
     <div className="brand" onClick={onClick} style={{ cursor: 'pointer' }}>
-      <svg viewBox="0 0 512 512" width="34" height="34">
-        <defs>
-          <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#6366f1" />
-            <stop offset="1" stopColor="#22d3ee" />
-          </linearGradient>
-        </defs>
-        <rect width="512" height="512" rx="112" fill="#121a30" />
-        <circle cx="256" cy="256" r="150" fill="url(#g2)" opacity="0.92" />
-        <path d="M256 150l92 54v108l-92 54-92-54V204z" fill="none" stroke="#0b0f1a" strokeWidth="16" strokeLinejoin="round" />
-        <path d="M196 266l44 44 80-92" fill="none" stroke="#0b0f1a" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <span>Exam<b>AI</b></span>
+      <BrandLogo />
     </div>
   )
 }
@@ -152,6 +144,8 @@ export function StudentLayout({ title, children }) {
   const nav = STUDENT_NAV.filter((i) => {
     if (i.to === '/groups') return Boolean(flags.groupStudy)
     if (i.to === '/battles') return Boolean(flags.battles)
+    if (i.to === '/focus') return Boolean(flags.focusAreas)
+    if (i.to === '/current-affairs') return Boolean(flags.currentAffairs)
     return true
   })
   return <AppShell nav={nav} title={title}>{children}</AppShell>

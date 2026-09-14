@@ -1,13 +1,14 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Brand } from '../components/Layout.jsx'
+import { BrandLogo } from '../context/BrandingContext.jsx'
+import { useBranding } from '../context/BrandingContext.jsx'
 
 // Public sales/presentation page for schools & coaching institutes (B2B white-label).
 // Designed to be opened on a projector during a school pitch.
 const PILLARS = [
   {
     icon: '🏫', title: 'Aapka brand, hamara engine',
-    points: ['School ka logo, naam aur rang — students ko school ka app dikhega', 'Apna subdomain: yourschool.examai.app (ya apna domain)', 'School ka apna admin panel — full control']
+    points: ['School ka logo, naam aur rang — students ko school ka app dikhega', 'Apna subdomain: yourschool.aisepadho.com (ya apna domain)', 'School ka apna admin panel — full control']
   },
   {
     icon: '📝', title: 'Tests, aapke hisaab se',
@@ -39,10 +40,11 @@ const STEPS = [
 
 export default function Schools() {
   const nav = useNavigate()
+  const brand = useBranding()
   return (
     <div style={{ minHeight: '100vh' }}>
       <header className="topbar">
-        <Brand />
+        <BrandLogo />
         <div className="spacer" />
         <span className="chip">For Schools & Coaching Institutes</span>
         <button className="btn btn-ghost btn-sm" onClick={() => nav('/')}>← Student app</button>
@@ -143,7 +145,7 @@ export default function Schools() {
       </div>
 
       <footer className="tiny muted" style={{ textAlign: 'center', padding: '30px 0 40px' }}>
-        ExamAI — AI-Powered Test Practice · <a href="mailto:sales@examai.app">sales@examai.app</a>
+        {brand.platformName} — AI-Powered Test Practice · <a href={`mailto:${brand.supportEmail || 'sales@aisepadho.com'}`}>{brand.supportEmail || 'sales@aisepadho.com'}</a>
       </footer>
     </div>
   )

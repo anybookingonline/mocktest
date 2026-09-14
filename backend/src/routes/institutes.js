@@ -4,7 +4,7 @@ import { authRequired, adminOnly } from '../middleware/auth.js'
 import {
   listInstitutes, createInstitute, updateInstitute, getInstitute,
   createInvite, listInvites, toggleInvite, checkInvite,
-  addSubAdmin, bulkCreateStudents, instituteStudents, instituteStats, resolveBranding
+  addSubAdmin, bulkCreateStudents, instituteStudents, instituteStats, resolveBranding, notifyLinked
 } from '../utils/institute.js'
 
 // ---------------------------------------------------------------------------
@@ -27,11 +27,23 @@ router.get('/public/invite', async (req, res) => {
 })
 
 // GET /api/institutes/public/branding — resolve platform name/colors for this
-// request (custom domain, or ?sch= invite code on the shared domain)
+// request (custom domain, or ?sch= invite code on the shared domain).
+// Also returns the platform's own branding (name/tagline/logo/support email)
+// so the whole app — landing, login, tab title, favicon — rebrands from
+// Admin → Settings without a redeploy. instituteId is included when resolved
+// so signed-in users can be shown their institute's name.
 router.get('/public/branding', async (req, res) => {
   const host = req.headers['x-forwarded-host'] || req.headers.host || null
   const out = await resolveBranding({ host, inviteCode: req.query.sch || null })
-  res.json(out)
+  const get = async (k) => (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || null
+  res.json({
+    ...out,
+    platformName: out.platformName || (await get('platform.name')) || 'Aisepadho',
+    tagline: out.tagline || (await get('platform.tagline')) || 'Padho. Test do. Aage badho.',
+    supportEmail: await get('platform.supportEmail'),
+    logoUrl: out.logoUrl || (await get('platform.logoUrl')),
+    domain: await get('platform.domain')
+  })
 })
 
 // --------------------------- platform admin ---------------------------------
@@ -45,7 +57,7 @@ platformAdmin.get('/institutes', async (_req, res) => {
 })
 
 platformAdmin.post('/institutes', async (req, res) => {
-  const out = await createInstitute({ name: req.body?.name, contactEmail: req.body?.contactEmail, planDays: req.body?.planDays })
+  const out = await createInstitute({ name: req.body?.name, contactEmail: req.body?.contactEmail, planDays: req.body?.planDays, kind: req.body?.kind })
   if (out.error) return res.status(400).json(out)
   res.status(201).json(out)
 })
@@ -75,6 +87,10 @@ platformAdmin.post('/institutes/:id/invites/:inviteId/toggle', async (req, res) 
 platformAdmin.post('/institutes/:id/subadmin', async (req, res) => {
   const out = await addSubAdmin({ instituteId: req.params.id, name: req.body?.name, email: req.body?.email, password: req.body?.password })
   if (out.error) return res.status(400).json(out)
+  // Best-effort Telegram DM — if the institute owner already linked the bot,
+  // they get their login credentials right in chat (never stored in chat
+  // history of students, only their own).
+  notifyLinked(out.userId, `🏫 Aapko ${out.instituteName || 'institute'} ka admin access diya gaya hai.\nLogin: aapki app/website\nEmail: ${out.email}\nPassword: (jo admin ne set kiya)\n\nLogin ke baad password zaroor change karna.`).catch(() => {})
   res.status(201).json(out)
 })
 

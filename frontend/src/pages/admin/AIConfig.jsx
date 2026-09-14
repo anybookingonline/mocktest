@@ -248,21 +248,80 @@ export default function AdminAI() {
         )}
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Paid add-on pricing (students ke Plans page par dikhta hai)</b>
+        <p className="tiny muted mb">Jo add-on ON karoge wahi students ko Plans page par dikhega — OFF wale completely hidden. Price/validity turant live update hoti hai.</p>
         <div className="field-row">
-          <label className="field"><span>⚡ AI Power Pack — price (₹)</span>
+          <label className="field"><span>⚡ AI Power Pack — ON/OFF</span>
+            <select className="select" value={cfg['addons.aiPowerEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.aiPowerEnabled', e.target.value)}>
+              <option value="true">On — sell to students</option>
+              <option value="false">Off — hidden from Plans page</option>
+            </select>
+          </label>
+          <label className="field"><span>AI Power Pack — price (₹)</span>
             <input type="number" className="input" value={cfg['addons.aiPowerPrice'] || 99} onChange={(e) => set('addons.aiPowerPrice', e.target.value)} />
           </label>
           <label className="field"><span>AI Power Pack — validity (days)</span>
             <input type="number" className="input" value={cfg['addons.aiPowerDays'] || 365} onChange={(e) => set('addons.aiPowerDays', e.target.value)} />
           </label>
-          <label className="field"><span>🎙️ Voice Doubts — price (₹)</span>
+        </div>
+        <div className="field-row">
+          <label className="field"><span>🎙️ Voice Doubts — ON/OFF</span>
+            <select className="select" value={cfg['addons.voiceEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.voiceEnabled', e.target.value)}>
+              <option value="true">On — sell to students</option>
+              <option value="false">Off — hidden from Plans page</option>
+            </select>
+          </label>
+          <label className="field"><span>Voice Doubts — price (₹)</span>
             <input type="number" className="input" value={cfg['addons.voicePrice'] || 49} onChange={(e) => set('addons.voicePrice', e.target.value)} />
           </label>
           <label className="field"><span>Voice Doubts — validity (days)</span>
             <input type="number" className="input" value={cfg['addons.voiceDays'] || 365} onChange={(e) => set('addons.voiceDays', e.target.value)} />
           </label>
         </div>
-        <p className="tiny muted">Whisper + unlimited AI aapke kharche wale features hain — isliye ye add-ons paid hain. Zero paisa lag raha ho (jaise Telegram text doubts, Group Study) to wo free rehta hai (limits ke saath).</p>
+        <div className="field-row">
+          <label className="field"><span>📰 Current Affairs Pro — ON/OFF</span>
+            <select className="select" value={cfg['addons.caEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.caEnabled', e.target.value)}>
+              <option value="true">On — sell to students</option>
+              <option value="false">Off — hidden from Plans page</option>
+            </select>
+          </label>
+          <label className="field"><span>Current Affairs Pro — price (₹)</span>
+            <input type="number" className="input" value={cfg['addons.caPrice'] || 99} onChange={(e) => set('addons.caPrice', e.target.value)} />
+          </label>
+          <label className="field"><span>Current Affairs Pro — validity (days)</span>
+            <input type="number" className="input" value={cfg['addons.caDays'] || 365} onChange={(e) => set('addons.caDays', e.target.value)} />
+          </label>
+        </div>
+        <div className="field-row">
+          <label className="field"><span>🔥 AI Focus Areas — ON/OFF</span>
+            <select className="select" value={cfg['addons.focusEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.focusEnabled', e.target.value)}>
+              <option value="true">On — sell to students</option>
+              <option value="false">Off — hidden from Plans page</option>
+            </select>
+          </label>
+          <label className="field"><span>AI Focus Areas — price (₹)</span>
+            <input type="number" className="input" value={cfg['addons.focusPrice'] || 79} onChange={(e) => set('addons.focusPrice', e.target.value)} />
+          </label>
+          <label className="field"><span>AI Focus Areas — validity (days)</span>
+            <input type="number" className="input" value={cfg['addons.focusDays'] || 365} onChange={(e) => set('addons.focusDays', e.target.value)} />
+          </label>
+        </div>
+        <p className="tiny muted">Whisper, unlimited AI, daily CA quiz generation — ye sab aapke kharche wale features hain, isliye add-ons. Ek baar din me CA quiz AI cost hoti hai, sab CA users share karte hain — margin high rehta hai.</p>
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>Feature toggles — CA page & Focus page visibility</b>
+        <div className="field-row">
+          <label className="field"><span>📰 Current Affairs page (student nav)</span>
+            <select className="select" value={cfg['features.currentAffairs'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.currentAffairs', e.target.value)}>
+              <option value="false">Off — nav hidden, API 403</option>
+              <option value="true">On — CA Pro buyers ke liye visible</option>
+            </select>
+          </label>
+          <label className="field"><span>🔥 Focus Areas page (student nav)</span>
+            <select className="select" value={cfg['features.focusAreas'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.focusAreas', e.target.value)}>
+              <option value="false">Off — nav hidden, API 403</option>
+              <option value="true">On — Focus buyers ke liye visible</option>
+            </select>
+          </label>
+        </div>
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Telegram bot wiring</b>
         <div className="field-row">
@@ -273,11 +332,17 @@ export default function AdminAI() {
             <input className="input" placeholder="YourExamAITutorBot" value={cfg['telegram.botUsername'] || ''} onChange={(e) => set('telegram.botUsername', e.target.value)} />
           </label>
         </div>
+        <div className="field-row">
+          <label className="field" style={{ gridColumn: 'span 2' }}><span>Webhook domain (jahan se bot already bana hai — e.g. https://aisepadho.com)</span>
+            <input className="input" placeholder="https://aisepadho.com" value={cfg['telegram.webhookDomain'] || ''} onChange={(e) => set('telegram.webhookDomain', e.target.value)} />
+          </label>
+        </div>
+        <p className="tiny muted mb">Bot agar Vercel/frontend domain se banaya hai to yahan apna final domain daalo (https:// ke saath, bina trailing slash). Telegram sirf ek public HTTPS URL maangta hai — aapke domain ka /api/* backend tak pahunchta hai (Vercel rewrite ya same-host serve), to webhook wahi chalega. Khali chhoda to BACKEND_URL use hoga.</p>
         <div className="row">
           <button className="btn btn-ghost btn-sm" onClick={setupTelegramWebhook} disabled={tgSetup || !cfg['telegram.botToken']}>
             {tgSetup ? 'Wiring…' : '🔗 Wire webhook automatically'}
           </button>
-          <span className="tiny muted">Turn bot ON + save first. Uses BACKEND_URL to build the webhook URL.</span>
+          <span className="tiny muted">Turn bot ON + save first. Webhook URL = webhookDomain (ya BACKEND_URL) + /api/telegram/webhook</span>
         </div>
       </div>
 

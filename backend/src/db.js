@@ -456,6 +456,7 @@ CREATE TABLE IF NOT EXISTS points_log (
 CREATE INDEX IF NOT EXISTS idx_points_log_user ON points_log (user_id, created_at DESC);
 
 -- White-label branding + B2B plan fields on institutes
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'coaching';
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'trial';
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS plan_until TEXT;
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS platform_name TEXT;

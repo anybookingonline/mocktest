@@ -88,13 +88,25 @@ export default function AdminSettings() {
   return (
     <AdminLayout title="Platform Settings">
       <div className="card" style={{ maxWidth: 720 }}>
-        <b className="small mb" style={{ display: 'block' }}>Platform branding</b>
-        <label className="field"><span>Platform name</span>
-          <input className="input" value={cfg['platform.name']} onChange={set('platform.name')} />
+        <b className="small mb" style={{ display: 'block' }}>Platform branding (poore app me live rebrand hota hai)</b>
+        <label className="field"><span>App / platform name</span>
+          <input className="input" value={cfg['platform.name']} onChange={set('platform.name')} placeholder="Aisepadho" />
         </label>
         <label className="field"><span>Tagline</span>
-          <input className="input" value={cfg['platform.tagline']} onChange={set('platform.tagline')} />
+          <input className="input" value={cfg['platform.tagline']} onChange={set('platform.tagline')} placeholder="Padho. Test do. Aage badho." />
         </label>
+        <div className="field-row">
+          <label className="field"><span>Logo URL (png/svg — tab title + sidebar)</span>
+            <input className="input" value={cfg['platform.logoUrl']} placeholder="https://…/logo.png" onChange={set('platform.logoUrl')} />
+          </label>
+          <label className="field"><span>Apna domain (e.g. https://aisepadho.com)</span>
+            <input className="input" value={cfg['platform.domain']} placeholder="https://aisepadho.com" onChange={set('platform.domain')} />
+          </label>
+        </div>
+        <label className="field"><span>Support email (footer + parent reports)</span>
+          <input className="input" value={cfg['platform.supportEmail']} placeholder="support@aisepadho.com" onChange={set('platform.supportEmail')} />
+        </label>
+        <p className="tiny muted mb">Name save karte hi app ka tab-title, favicon, sidebar logo, Telegram bot aur public pages naye brand me aa jate hain — koi redeploy nahi chahiye.</p>
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Plan pricing</b>
         <div className="row">

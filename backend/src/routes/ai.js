@@ -3,7 +3,7 @@ import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
 import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
-import { solveDoubtWithAI, explainQuestionWithAI } from '../utils/aiTasks.js'
+import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
 import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS } from '../utils/aiService.js'
 import { getEntitlements } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
@@ -146,21 +146,41 @@ router.post('/adaptive/:id/next', async (req, res) => {
   }
 
   const cfg = state.config || {}
-  const where = ['exam_id = ?', 'is_active = 1']
-  const params = [cfg.examId]
-  if (cfg.subjectId) { where.push('subject_id = ?'); params.push(cfg.subjectId) }
-  if (cfg.chapterId) { where.push('chapter_id = ?'); params.push(cfg.chapterId) }
-  if (cfg.topicId) { where.push('topic_id = ?'); params.push(cfg.topicId) }
-  if (state.completed.length) { where.push(`id NOT IN (${state.completed.map(() => '?').join(',')})`); params.push(...state.completed) }
-
-  let question
-  // try current difficulty first, then relax
-  for (const d of [DIFF_NAMES[level], level < 3 ? DIFF_NAMES[level + 1] : DIFF_NAMES[level - 1]]) {
-    question = await db.prepare(`SELECT * FROM questions WHERE ${where.join(' AND ')} AND difficulty = ? ORDER BY RANDOM() LIMIT 1`).get(...params, d)
-    if (question) break
+  // Scoped picker: current difficulty first, then relax one step.
+  const pick = async (scope = {}) => {
+    const where = ['exam_id = ?', 'is_active = 1']
+    const params = [scope.examId ?? cfg.examId]
+    const subjectId = scope.subjectId !== undefined ? scope.subjectId : cfg.subjectId
+    const chapterId = scope.chapterId !== undefined ? scope.chapterId : cfg.chapterId
+    const topicId = scope.topicId !== undefined ? scope.topicId : cfg.topicId
+    if (subjectId) { where.push('subject_id = ?'); params.push(subjectId) }
+    if (chapterId) { where.push('chapter_id = ?'); params.push(chapterId) }
+    if (topicId) { where.push('topic_id = ?'); params.push(topicId) }
+    if (state.completed.length) { where.push(`id NOT IN (${state.completed.map(() => '?').join(',')})`); params.push(...state.completed) }
+    for (const d of [DIFF_NAMES[level], level < 3 ? DIFF_NAMES[level + 1] : DIFF_NAMES[level - 1]]) {
+      const q = await db.prepare(`SELECT * FROM questions WHERE ${where.join(' AND ')} AND difficulty = ? ORDER BY RANDOM() LIMIT 1`).get(...params, d)
+      if (q) return q
+    }
+    return db.prepare(`SELECT * FROM questions WHERE ${where.join(' AND ')} ORDER BY RANDOM() LIMIT 1`).get(...params)
   }
+
+  let question = await pick()
+  let aiGenerated = false
+  let relaxed = false
+  // 1) AI fallback: empty topic (e.g. fresh Bank PO syllabus) used to hard-404.
+  //    Generate a small batch once, persist it under the same topic mapping and
+  //    the normal DB picker serves the rest of the session for free.
+  if (!question && (await generateAdaptiveBatch(state, level))) {
+    question = await pick()
+    aiGenerated = Boolean(question)
+  }
+  // 2) Last resort: widen the scope (topic -> chapter -> subject -> exam) so a
+  //    session never dies mid-way. Flagged so the UI can tell the student.
   if (!question) {
-    question = await db.prepare(`SELECT * FROM questions WHERE ${where.join(' AND ')} ORDER BY RANDOM() LIMIT 1`).get(...params)
+    question = await pick({ topicId: null })
+    if (!question) question = await pick({ topicId: null, chapterId: null })
+    if (!question) question = await pick({ topicId: null, chapterId: null, subjectId: null })
+    relaxed = Boolean(question)
   }
   if (!question) return res.status(404).json({ error: 'No more questions available. Try another topic.' })
 
@@ -180,12 +200,43 @@ router.post('/adaptive/:id/next', async (req, res) => {
     },
     level: DIFF_NAMES[level],
     completed: state.completed.length,
-    total: state.num
+    total: state.num,
+    aiGenerated,
+    relaxed
   })
 })
 
 function parseState(str) {
   try { return JSON.parse(str || '{}') } catch { return {} }
+}
+
+// AI generation fallback for adaptive sessions. Cost-guarded: max 4 AI calls
+// per session, then the relaxed DB picker takes over. Failures are non-fatal.
+async function generateAdaptiveBatch(state, level) {
+  try {
+    const cfg = state.config || {}
+    if (!cfg.examId) return false
+    state.aiCount = Number(state.aiCount) || 0
+    if (state.aiCount >= 4) return false
+    const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(Number(cfg.examId))
+    if (!exam) return false
+    const subject = cfg.subjectId ? await db.prepare('SELECT name FROM subjects WHERE id = ?').get(Number(cfg.subjectId)) : null
+    const chapter = cfg.chapterId ? await db.prepare('SELECT name FROM chapters WHERE id = ?').get(Number(cfg.chapterId)) : null
+    const topic = cfg.topicId ? await db.prepare('SELECT name FROM topics WHERE id = ?').get(Number(cfg.topicId)) : null
+    const list = await generateQuestionsWithAI({
+      exam, count: 3,
+      subject: subject?.name || null, chapter: chapter?.name || null, topic: topic?.name || null,
+      difficulty: DIFF_NAMES[level] || 'medium',
+      seed: `adaptive-${state.completed?.length || 0}-${Date.now()}`
+    })
+    if (!Array.isArray(list) || !list.length) return false
+    await persistQuestions(list, {
+      exam, source: 'ai', sourceMeta: { generatedBy: 'adaptive' },
+      mapping: { subjectId: cfg.subjectId || null, chapterId: cfg.chapterId || null, topicId: cfg.topicId || null }
+    })
+    state.aiCount += 1 // persisted with the session state on the next save
+    return true
+  } catch { return false }
 }
 async function updateTopicStats(userId, questionId, wasCorrect) {
   try {

@@ -180,7 +180,7 @@ export async function generateDoubtMock({ doubtId, userId }) {
 
 // ----------------------------- daily cron -----------------------------------
 
-async function sendTelegram(chatId, text) {
+export async function sendTelegram(chatId, text) {
   const token = await getConfig('telegram.botToken')
   if (!token) return false
   try {

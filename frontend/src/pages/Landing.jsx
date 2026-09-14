@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
-import { Brand } from '../components/Layout.jsx'
+import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 
 const EXAMS = [
   { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', note: 'Engineering' },
@@ -36,6 +36,8 @@ const NEW_FEATURES = [
 
 export default function Landing() {
   const nav = useNavigate()
+  const brand = useBranding()
+  const tagline = brand.tagline || 'Padho. Test do. Aage badho.'
   const [stats, setStats] = useState(null)
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export default function Landing() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <header className="topbar">
-        <Brand />
+        <BrandLogo />
         <div className="spacer" />
         <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>Log in</button>
         <button className="btn btn-primary btn-sm" onClick={() => nav('/register')}>Sign up free</button>
@@ -59,7 +61,7 @@ export default function Landing() {
           <span className="chip">PWA-ready</span>
         </div>
         <h1>Master Every Exam with<br /><span>AI-Powered Practice</span></h1>
-        <p>Mock tests, adaptive learning, PYQ papers, real exam simulation — plus 1v1 battles, group study, spaced revision and an All-India leaderboard that makes prep addictive.</p>
+        <p>{tagline}. Mock tests, adaptive learning, PYQ papers, real exam simulation — plus 1v1 battles, group study, spaced revision and an All-India leaderboard that makes prep addictive.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
           <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => nav('/register')}>Start practicing free</button>
           <button className="btn btn-ghost" style={{ padding: '13px 26px' }} onClick={() => nav('/schools')}>For Schools →</button>
@@ -125,7 +127,7 @@ export default function Landing() {
         </div>
 
         <div className="card muted-bg mb" style={{ border: 'none', textAlign: 'center' }}>
-          <b>Run your school or coaching on ExamAI</b>
+          <b>Run your school or coaching on {brand.platformName}</b>
           <p className="small muted mt">White-label AI test platform — your brand, your tests, parent-ready progress reports. Free 30-day pilot.</p>
           <div className="row mt" style={{ justifyContent: 'center' }}>
             <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 For Schools & Coaching →</button>
