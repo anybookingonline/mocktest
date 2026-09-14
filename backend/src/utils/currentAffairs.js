@@ -1,6 +1,7 @@
 import db from '../db.js'
 import { getConfig } from './aiService.js'
 import { generateQuestionsWithAI, persistQuestions } from './aiTasks.js'
+import { searchNewsContext, formatNewsBlock } from './exaSearch.js'
 
 // ---------------------------------------------------------------------------
 // Current Affairs Pro add-on.
@@ -34,7 +35,13 @@ export async function getOrCreateDailyQuiz(exam) {
   // AI generates ONE fresh set per exam per day. Topic steers the news domain;
   // persistQuestions dedups by content hash so repeats never double-store.
   const topic = `${CA_SUBJECT} for ${exam.name} aspirants — last 7 days`
-  const list = await generateQuestionsWithAI({ exam, count: 10, topic, seed: `ca-${exam.id}-${day}` })
+  // Exa (optional): ground the quiz in real last-7-days news. Fail-open —
+  // without a key or on error the AI still generates from its own knowledge.
+  const newsBlock = formatNewsBlock(await searchNewsContext(topic))
+  const newsHint = newsBlock
+    ? `Ground these REAL recent news items (prefer making questions from them, keep facts verifiable):\n${newsBlock}\n\n`
+    : ''
+  const list = await generateQuestionsWithAI({ exam, count: 10, topic, seed: `ca-${exam.id}-${day}`, newsHint })
   if (!Array.isArray(list) || !list.length) throw new Error('AI could not generate the current-affairs quiz. Try again shortly.')
   await persistQuestions(list, { exam, source: 'ai', sourceMeta: { kind: 'current_affairs', day } })
   // fetch persisted rows (dedup may have dropped some; use whatever landed)

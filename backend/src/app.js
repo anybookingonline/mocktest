@@ -73,7 +73,7 @@ if (!skipRateLimit) {
 app.get('/api/health', async (req, res) => {
   try {
     const row = await db.prepare('SELECT COUNT(*) c FROM questions').get()
-    res.json({ ok: true, time: new Date().toISOString(), questions: row.c, cache: cacheStatus(), storage: b2Status() })
+    res.json({ ok: true, time: new Date().toISOString(), questions: row.c, cache: cacheStatus(), storage: await b2Status() })
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message })
   }

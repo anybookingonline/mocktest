@@ -22,6 +22,9 @@ export default function AdminSettings() {
   const [cfg, setCfg] = useState(null)
   const [gateways, setGateways] = useState(['razorpay'])
   const [fileBuf, setFileBuf] = useState(null)
+  const [storage, setStorage] = useState(null)
+  const [b2Testing, setB2Testing] = useState(false)
+  const [b2Result, setB2Result] = useState(null)
 
   useEffect(() => {
     api.get('/admin/settings').then((d) => {
@@ -31,7 +34,21 @@ export default function AdminSettings() {
       setGateways(g)
       setCfg(s)
     }).catch(() => {})
+    api.get('/admin/storage').then((d) => setStorage(d.storage)).catch(() => {})
   }, [])
+
+  const testB2 = async () => {
+    setB2Testing(true); setB2Result(null)
+    try {
+      // save first so freshly typed keys are what we test
+      const payload = { ...cfg, 'monetization.gateways': JSON.stringify(gateways) }
+      await api.put('/admin/settings', payload)
+      const r = await api.post('/admin/storage/test', {})
+      setB2Result(r)
+      toast(r.ok ? 'B2 connection OK — upload/download/delete sab pass ✅' : 'B2 test fail — steps dekho', r.ok ? 'ok' : 'err')
+      api.get('/admin/storage').then((d) => setStorage(d.storage)).catch(() => {})
+    } catch (e) { toast(e.message, 'err') } finally { setB2Testing(false) }
+  }
 
   const save = async () => {
     try {
@@ -107,6 +124,43 @@ export default function AdminSettings() {
           <input className="input" value={cfg['platform.supportEmail']} placeholder="support@aisepadho.com" onChange={set('platform.supportEmail')} />
         </label>
         <p className="tiny muted mb">Name save karte hi app ka tab-title, favicon, sidebar logo, Telegram bot aur public pages naye brand me aa jate hain — koi redeploy nahi chahiye.</p>
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>🗄️ Storage — Backblaze B2 (PDF/PYQ papers + payment proofs)</b>
+        <p className="tiny muted mb">Mode: <b>{storage?.mode === 'b2' ? `B2 ✅ (${storage.source === 'env' ? 'env vars' : 'yahan se set'})` : 'local disk (dev mode)'}</b>{storage?.bucket ? <> · bucket: <code>{storage.bucket}</code></> : null}. B2 set hone par har PDF aur payment-proof encrypted B2 par archive hota hai — server restart par bhi safe. Env vars (B2_KEY_ID…) diye hain to ye fields khaali chhod do — env priority rakhta hai.</p>
+        <div className="field-row">
+          <label className="field"><span>Key ID (Backblaze → App Keys)</span>
+            <input className="input" type="text" placeholder="0039…" value={cfg['b2.keyId'] || ''} onChange={set('b2.keyId')} />
+          </label>
+          <label className="field"><span>Application Key (keep secret)</span>
+            <input className="input" type="password" placeholder="K0039…" value={cfg['b2.appKey'] || ''} onChange={set('b2.appKey')} />
+          </label>
+        </div>
+        <div className="field-row">
+          <label className="field"><span>Bucket ID (Bucket Details se)</span>
+            <input className="input" placeholder="a1b2c3d4…" value={cfg['b2.bucketId'] || ''} onChange={set('b2.bucketId')} />
+          </label>
+          <label className="field"><span>Bucket name (optional — friendly URLs)</span>
+            <input className="input" placeholder="aisepadho-files" value={cfg['b2.bucketName'] || ''} onChange={set('b2.bucketName')} />
+          </label>
+        </div>
+        <label className="field"><span>Public base URL (optional custom CDN)</span>
+          <input className="input" placeholder="https://cdn.aisepadho.com" value={cfg['b2.publicBaseUrl'] || ''} onChange={set('b2.publicBaseUrl')} />
+        </label>
+        {b2Result && (
+          <div className="card" style={{ margin: '10px 0', padding: 12 }}>
+            {b2Result.steps?.map((s, i) => (
+              <div key={i} className="spread tiny" style={{ padding: '3px 0' }}>
+                <span>{s.ok ? '✅' : '❌'} {s.name}</span>
+                <span className="muted" style={{ maxWidth: '60%', textAlign: 'right' }}>{s.info}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="row mb">
+          <button className="btn btn-ghost btn-sm" onClick={testB2} disabled={b2Testing}>{b2Testing ? 'Testing…' : '🧪 Test B2 connection'}</button>
+          <span className="tiny muted">Save ke baad test dabao — upload/download/delete ka live report milega (test file auto-delete).</span>
+        </div>
+
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Plan pricing</b>
         <div className="row">

@@ -323,6 +323,33 @@ export default function AdminAI() {
           </label>
         </div>
         <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>🔍 Exa web search (Current Affairs grounding — optional)</b>
+        <div className="field-row">
+          <label className="field"><span>Exa API key (dashboard.exa.ai)</span>
+            <input className="input" type="password" placeholder="your exa api key" value={cfg['exa.apiKey'] || ''} onChange={(e) => set('exa.apiKey', e.target.value)} />
+          </label>
+          <label className="field"><span>Monthly search limit (cost cap)</span>
+            <input type="number" className="input" value={cfg['exa.monthlyLimit'] || 500} onChange={(e) => set('exa.monthlyLimit', e.target.value)} />
+          </label>
+        </div>
+        <p className="tiny muted mb">Key di to CA quiz AI real last-7-days news par ground hoti hai (accuracy ↑). Key nahi to AI apni knowledge se generate karega — kuch nahi tootta. Cost guard: din me 1 generation per exam + monthly cap. Env me EXA_API_KEY diye to wo priority rakhega.</p>
+
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>💰 Contextual ads (Gravity — free users ke tutor answers ke neeche)</b>
+        <div className="field-row">
+          <label className="field"><span>Gravity publisher API key (trygravity.ai)</span>
+            <input className="input" type="password" placeholder="publisher api key" value={cfg['gravity.apiKey'] || ''} onChange={(e) => set('gravity.apiKey', e.target.value)} />
+          </label>
+          <label className="field"><span>Ads ON/OFF</span>
+            <select className="select" value={cfg['features.contextualAds'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.contextualAds', e.target.value)}>
+              <option value="false">Off — koi ad nahi (default)</option>
+              <option value="true">On — free users ke AI answers ke neeche sponsored suggestion</option>
+            </select>
+          </label>
+        </div>
+        <p className="tiny muted mb">Pay-per-impression revenue. Ads sirf free users ko dikhte hain (AI Power Pack wale ko clean tutor), native card style, koi banner/spam nahi. Ad fail → kuch nahi dikhta, app kabhi nahi toot-ta.</p>
+
+        <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Telegram bot wiring</b>
         <div className="field-row">
           <label className="field"><span>Bot token (@BotFather se — keep secret)</span>

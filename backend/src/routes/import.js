@@ -44,7 +44,7 @@ router.post('/pdf', adminOnly, uploadLimiter(), upload.single('file'), async (re
   // ephemeral on most hosts). The local file is still used for processing and
   // removed after the import completes.
   let storageUrl = null
-  if (b2Configured()) {
+  if (await b2Configured()) {
     try {
       storageUrl = await putFile(req.file.path, { prefix: 'pdfs', filename: req.file.originalname, contentType: 'application/pdf' })
     } catch (e) {

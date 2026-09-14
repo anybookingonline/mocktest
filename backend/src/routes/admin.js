@@ -2,6 +2,7 @@ import express from 'express'
 import bcrypt from 'bcryptjs'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
+import { b2SelfTest, b2Status } from '../utils/b2.js'
 
 const router = express.Router()
 router.use(authRequired, adminOnly)
@@ -104,6 +105,8 @@ router.get('/settings', async (req, res) => {
     'razorpay.keyId', 'razorpay.keySecret', 'stripe.secretKey', 'stripe.webhookSecret',
     'phonepe.merchantId', 'phonepe.saltKey', 'phonepe.saltIndex', 'phonepe.env', 'phonepe.baseUrl',
     'qr.upiId', 'qr.qrImage', 'qr.holderName', 'qr.note',
+    'b2.keyId', 'b2.appKey', 'b2.bucketId', 'b2.bucketName', 'b2.publicBaseUrl',
+    'exa.apiKey', 'exa.monthlyLimit', 'gravity.apiKey', 'features.contextualAds',
     'telegram.botToken', 'telegram.botUsername', 'telegram.webhookDomain']
   const out = {}
   for (const k of keys) out[k] = (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || ''
@@ -115,7 +118,7 @@ router.put('/settings', async (req, res) => {
   const b = req.body || {}
   // Secret-shaped keys are never cleared by an empty save — an admin leaving
   // the (masked/blank) field untouched must not wipe a live bot/payment key.
-  const SECRET_KEY = /(botToken|apiKey|keySecret|secretKey|webhookSecret|saltKey)$/
+  const SECRET_KEY = /(botToken|apiKey|keySecret|secretKey|webhookSecret|saltKey|appKey)$/
   for (const [k, v] of Object.entries(b)) {
     if (SECRET_KEY.test(k) && !String(v).trim()) continue
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, String(v))
@@ -127,6 +130,16 @@ router.put('/settings', async (req, res) => {
 router.post('/reset-stats', async (req, res) => {
   await db.prepare('UPDATE questions SET usage_count = 0').run()
   res.json({ ok: true })
+})
+
+// GET /api/admin/storage - current storage mode (B2 configured from env or settings)
+router.get('/storage', async (req, res) => {
+  res.json({ storage: await b2Status() })
+})
+
+// POST /api/admin/storage/test - live B2 round-trip: authorize → upload → download → delete
+router.post('/storage/test', async (req, res) => {
+  try { res.json(await b2SelfTest()) } catch (e) { res.status(500).json({ ok: false, error: e.message, steps: [] }) }
 })
 
 // GET /api/admin/ai-cache - cache stats

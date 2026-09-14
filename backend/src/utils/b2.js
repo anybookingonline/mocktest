@@ -1,15 +1,17 @@
 import crypto from 'crypto'
+import { getConfig } from './aiService.js'
 
 // ---------------------------------------------------------------------------
 // Backblaze B2 storage (S3-compatible). Used for PDF/PYQ paper archives and
 // payment proof screenshots when B2 credentials are configured; otherwise the
 // local uploads/ directory is used (dev mode).
 //
-// Env vars:
-//   B2_KEY_ID / B2_APP_KEY  — Backblaze application key pair
-//   B2_BUCKET_ID            — bucket ID (or set B2_BUCKET_NAME)
-//   B2_BUCKET_NAME          — optional; enables friendly public URLs
-//   B2_PUBLIC_BASE_URL      — optional custom domain (e.g. https://cdn.examai.app)
+// Credentials resolution (env wins, admin panel fallback):
+//   1. Env:  B2_KEY_ID / B2_APP_KEY / B2_BUCKET_ID (or B2_BUCKET_NAME)
+//   2. Admin → Settings → Storage:  b2.keyId / b2.appKey / b2.bucketId
+//
+// Optional (friendly public URLs / custom CDN domain):
+//   B2_BUCKET_NAME / b2.bucketName,  B2_PUBLIC_BASE_URL / b2.publicBaseUrl
 //
 // Uses the native B2 REST API (no SDK needed):
 //   1. b2_authorize_account  -> auth token + API + download URL
@@ -18,40 +20,150 @@ import crypto from 'crypto'
 // Auth is cached in-process and re-authorized automatically on expiry.
 // ---------------------------------------------------------------------------
 
-const KEY_ID = process.env.B2_KEY_ID
-const APP_KEY = process.env.B2_APP_KEY
-const BUCKET_ID = process.env.B2_BUCKET_ID
-const BUCKET_NAME = process.env.B2_BUCKET_NAME || ''
-const PUBLIC_BASE = (process.env.B2_PUBLIC_BASE_URL || '').replace(/\/$/, '')
-
-let auth = null // { token, apiUrl, downloadUrl, expiresAt }
-
-export function b2Configured() {
-  return Boolean(KEY_ID && APP_KEY && (BUCKET_ID || BUCKET_NAME))
+// Legacy sync aliases (kept so a stale import somewhere doesn't crash hard):
+export function b2EnvConfigured() {
+  return Boolean(process.env.B2_KEY_ID && process.env.B2_APP_KEY && (process.env.B2_BUCKET_ID || process.env.B2_BUCKET_NAME))
 }
 
-export function b2Status() {
+let auth = null // { token, apiUrl, downloadUrl, bucketName, publicBase, expiresAt }
+
+export async function getB2Config() {
+  const envKeyId = process.env.B2_KEY_ID
+  const envAppKey = process.env.B2_APP_KEY
+  const envBucketId = process.env.B2_BUCKET_ID
+  const envBucketName = process.env.B2_BUCKET_NAME || ''
+  const envPublicBase = (process.env.B2_PUBLIC_BASE_URL || '').replace(/\/$/, '')
+  if (envKeyId && envAppKey && (envBucketId || envBucketName)) {
+    return { keyId: envKeyId, appKey: envAppKey, bucketId: envBucketId || '', bucketName: envBucketName, publicBase: envPublicBase, source: 'env' }
+  }
+  const [keyId, appKey, bucketId, bucketName, publicBase] = await Promise.all([
+    getConfig('b2.keyId'), getConfig('b2.appKey'), getConfig('b2.bucketId'),
+    getConfig('b2.bucketName'), getConfig('b2.publicBaseUrl')
+  ])
   return {
-    configured: b2Configured(),
-    bucket: BUCKET_NAME || BUCKET_ID || null,
-    publicBase: PUBLIC_BASE || null,
-    mode: b2Configured() ? 'b2' : 'local'
+    keyId: keyId || '', appKey: appKey || '', bucketId: bucketId || '',
+    bucketName: bucketName || '', publicBase: (publicBase || '').replace(/\/$/, ''),
+    source: 'settings'
   }
 }
 
+export async function b2Configured() {
+  const c = await getB2Config()
+  return Boolean(c.keyId && c.appKey && (c.bucketId || c.bucketName))
+}
+
+export async function b2Status() {
+  const c = await getB2Config()
+  const configured = Boolean(c.keyId && c.appKey && (c.bucketId || c.bucketName))
+  return {
+    configured,
+    source: configured ? c.source : null,
+    bucket: c.bucketName || c.bucketId || null,
+    publicBase: c.publicBase || null,
+    mode: configured ? 'b2' : 'local'
+  }
+}
+
+/**
+ * Full self-test: authorize → get upload URL → upload a tiny file →
+ * read it back → delete it. Returns a step-by-step report (no secrets).
+ * Leaves nothing behind in the bucket (diagnostics/ prefix, cleaned up).
+ */
+export async function b2SelfTest() {
+  const steps = []
+  const step = (name, ok, info = '') => { steps.push({ name, ok, info }); return ok }
+  try {
+    const a = await authorize(true)
+    const region = typeof a.apiUrl === 'string' ? (a.apiUrl.match(/api(\d\d)/)?.[1] || 'ok') : 'ok'
+    step('authorize', true, `region ${region}`)
+  } catch (e) { step('authorize', false, e.message); return { ok: false, steps } }
+
+  let key = null
+  try {
+    const c = await getB2Config()
+    const body = c.bucketId ? { bucketId: c.bucketId } : { bucketName: c.bucketName }
+    const res = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url`, {
+      method: 'POST',
+      headers: { Authorization: auth.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `get_upload_url failed (${res.status})`)
+    step('upload_url', true, 'bucket reachable')
+
+    key = `diagnostics/b2-selftest-${Date.now()}.txt`
+    const payload = Buffer.from(`Aisepadho B2 self-test ${new Date().toISOString()}`)
+    const sha1 = crypto.createHash('sha1').update(payload).digest('hex')
+    const up = await fetch(data.uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: data.authorizationToken,
+        'X-Bz-File-Name': encodeURIComponent(key),
+        'Content-Type': 'text/plain',
+        'X-Bz-Content-Sha1': sha1,
+        'X-Bz-Server-Side-Encryption': 'AES256'
+      },
+      body: new Uint8Array(payload)
+    })
+    if (!up.ok) throw new Error(`upload failed (${up.status})`)
+    step('upload', true, key)
+
+    const buf = await downloadFromB2(key)
+    step('download', buf.equals(payload), `${buf.length} bytes round-trip`)
+  } catch (e) {
+    step(key ? 'download' : 'upload', false, e.message)
+  }
+
+  try {
+    if (key) {
+      await deleteFromB2(key)
+      step('delete', true, 'bucket clean')
+    }
+  } catch (e) { step('delete', false, e.message) }
+
+  return { ok: steps.every((s) => s.ok), steps }
+}
+
+async function deleteFromB2(key) {
+  const a = await authorize()
+  const c = await getB2Config()
+  // b2_delete_file_version needs fileId; simplest reliable path: list by name then delete
+  const listRes = await fetch(`${a.apiUrl}/b2api/v3/b2_list_file_names?bucketId=${encodeURIComponent(c.bucketId)}&prefix=${encodeURIComponent(key)}&maxFileCount=1`, {
+    headers: { Authorization: a.token }
+  })
+  const list = await listRes.json().catch(() => ({}))
+  const file = list.files?.[0]
+  if (!file) return // nothing to delete — fine
+  await fetch(`${a.apiUrl}/b2api/v3/b2_delete_file_version`, {
+    method: 'POST',
+    headers: { Authorization: a.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileId: file.fileId, fileName: file.fileName })
+  })
+}
+
 async function authorize(force = false) {
-  if (!b2Configured()) throw new Error('Backblaze B2 is not configured (set B2_KEY_ID, B2_APP_KEY, B2_BUCKET_ID)')
+  const c = await getB2Config()
+  if (!(c.keyId && c.appKey && (c.bucketId || c.bucketName))) {
+    throw new Error('Backblaze B2 is not configured (env B2_KEY_ID/B2_APP_KEY/B2_BUCKET_ID ya Admin → Settings → Storage me daalo)')
+  }
   if (!force && auth && auth.expiresAt > Date.now()) return auth
-  const basic = Buffer.from(`${KEY_ID}:${APP_KEY}`).toString('base64')
+  const basic = Buffer.from(`${c.keyId}:${c.appKey}`).toString('base64')
   const res = await fetch('https://api.backblazeb2.com/b2api/v3/b2_authorize_account', {
     headers: { Authorization: `Basic ${basic}` }
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || `B2 authorization failed (${res.status})`)
+  // v3 API nests the storage endpoints under apiInfo.storageApi (v2 had them top-level).
+  const sa = data.apiInfo?.storageApi || {}
   auth = {
-    token: data.authorizationToken,
-    apiUrl: data.apiUrl,
-    downloadUrl: data.downloadUrl,
+    token: data.authorizationToken || sa.authorizationToken,
+    apiUrl: sa.apiUrl || data.apiUrl,
+    downloadUrl: sa.downloadUrl || data.downloadUrl,
+    // Bucket-restricted app keys echo their bucket here — handy fallback when
+    // the admin set only the key + bucket name and skipped bucket ID.
+    keyBucketId: sa.bucketId || data.bucketId || null,
+    bucketName: c.bucketName || null,
+    publicBase: c.publicBase,
     // B2 tokens are valid 24h; refresh after 23h to be safe
     expiresAt: Date.now() + 23 * 60 * 60 * 1000
   }
@@ -63,7 +175,9 @@ let uploadUrlCache = null // { uploadUrl, token, expiresAt }
 async function getUploadUrl() {
   const a = await authorize()
   if (uploadUrlCache && uploadUrlCache.expiresAt > Date.now()) return uploadUrlCache
-  const body = BUCKET_ID ? { bucketId: BUCKET_ID } : { bucketName: BUCKET_NAME }
+  const c = await getB2Config()
+  const bucketId = c.bucketId || auth.keyBucketId
+  const body = bucketId ? { bucketId } : { bucketName: c.bucketName }
   const res = await fetch(`${a.apiUrl}/b2api/v3/b2_get_upload_url`, {
     method: 'POST',
     headers: { Authorization: a.token, 'Content-Type': 'application/json' },
@@ -83,12 +197,11 @@ async function getUploadUrl() {
 }
 
 export function publicUrlForKey(key) {
-  if (PUBLIC_BASE) return `${PUBLIC_BASE}/${key}`
-  if (BUCKET_NAME) {
-    const a = auth
-    if (a?.downloadUrl) return `${a.downloadUrl}/file/${BUCKET_NAME}/${key}`
+  if (auth?.publicBase) return `${auth.publicBase}/${key}`
+  if (auth?.bucketName) {
+    if (auth.downloadUrl) return `${auth.downloadUrl}/file/${auth.bucketName}/${key}`
     // downloadUrl is stable per-account region: fall back to the generic pattern
-    return `B2_DOWNLOAD_URL/file/${BUCKET_NAME}/${key}`
+    return `B2_DOWNLOAD_URL/file/${auth.bucketName}/${key}`
   }
   return null // no public URL — stream through the API instead
 }
@@ -102,10 +215,10 @@ export function publicUrlForKey(key) {
 export async function uploadToB2(buffer, key, contentType = 'application/octet-stream') {
   const { uploadUrl, token } = await getUploadUrl()
   const sha1 = crypto.createHash('sha1').update(buffer).digest('hex')
-  const res = await fetch(uploadUrl, {
+  const doUpload = (url, tok) => fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: token,
+      Authorization: tok,
       'X-Bz-File-Name': encodeURIComponent(key),
       'Content-Type': contentType,
       'X-Bz-Content-Sha1': sha1,
@@ -113,23 +226,12 @@ export async function uploadToB2(buffer, key, contentType = 'application/octet-s
     },
     body: new Uint8Array(buffer)
   })
+  let res = await doUpload(uploadUrl, token)
   if (res.status === 401) {
     // upload token expired/rotated — retry once with a fresh one
     uploadUrlCache = null
     const retry = await getUploadUrl()
-    const r2 = await fetch(retry.uploadUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: retry.token,
-        'X-Bz-File-Name': encodeURIComponent(key),
-        'Content-Type': contentType,
-        'X-Bz-Content-Sha1': sha1,
-        'X-Bz-Server-Side-Encryption': 'AES256'
-      },
-      body: new Uint8Array(buffer)
-    })
-    if (!r2.ok) throw new Error(`B2 upload failed (${r2.status})`)
-    return { key, publicUrl: publicUrlForKey(key) }
+    res = await doUpload(retry.uploadUrl, retry.token)
   }
   if (!res.ok) {
     const t = await res.text().catch(() => '')
@@ -143,9 +245,10 @@ export async function uploadToB2(buffer, key, contentType = 'application/octet-s
  */
 export async function downloadFromB2(key) {
   const a = await authorize()
-  const url = PUBLIC_BASE
-    ? `${PUBLIC_BASE}/${key}`
-    : `${a.downloadUrl}/file/${BUCKET_NAME}/${encodeURIComponent(key)}`
+  const c = await getB2Config()
+  const url = c.publicBase
+    ? `${c.publicBase}/${key}`
+    : `${a.downloadUrl}/file/${c.bucketName || auth.bucketName}/${encodeURIComponent(key)}`
   const res = await fetch(url, { headers: { Authorization: a.token } })
   if (!res.ok) throw new Error(`B2 download failed (${res.status})`)
   return Buffer.from(await res.arrayBuffer())
@@ -156,7 +259,7 @@ export async function downloadFromB2(key) {
  * Returns null when B2 is not configured so callers can keep the local copy.
  */
 export async function putFile(filePath, { prefix = 'files', filename, contentType } = {}) {
-  if (!b2Configured()) return null
+  if (!(await b2Configured())) return null
   const fs = await import('fs')
   const buffer = fs.readFileSync(filePath)
   const safeName = String(filename || filePath.split('/').pop()).replace(/[^\w.\-]/g, '_')

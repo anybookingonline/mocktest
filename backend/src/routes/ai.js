@@ -7,6 +7,7 @@ import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persi
 import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS } from '../utils/aiService.js'
 import { getEntitlements } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
+import { getContextualAd, publicAdFields } from '../utils/monetize.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -51,7 +52,24 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
     // Recognition: asking + resolving a doubt both earn points
     await awardPoints(req.user.id, 'doubt_asked')
     await awardPoints(req.user.id, 'doubt_resolved')
-    res.json({ response })
+    // Contextual ad (free users only; paid users keep a clean tutor surface).
+    // Fire-and-forget semantics: ad failure never affects the doubt response.
+    let ad = null
+    try {
+      const ent = await getEntitlements(req.user.id)
+      if (!ent.aiPower) {
+        ad = publicAdFields(await getContextualAd({
+          messages: [
+            { role: 'user', content: (q?.question_text || questionText || '') + ' — ' + message },
+            { role: 'assistant', content: String(response).slice(0, 500) }
+          ],
+          sessionId: `doubt-${req.user.id}`,
+          user: { id: req.user.id },
+          device: { ua: req.headers['user-agent'] || '', ip: req.ip || '' }
+        }))
+      }
+    } catch { /* ads are best-effort */ }
+    res.json({ response, ad })
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
   }

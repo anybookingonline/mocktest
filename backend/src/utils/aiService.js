@@ -53,7 +53,8 @@ export async function getAiSettings() {
     'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
     'features.voiceDoubts', 'features.telegramBot', 'features.groupStudy', 'features.groupDiscussions', 'features.battles', 'features.currentAffairs', 'features.focusAreas', 'openai.apiKey', 'telegram.botToken',
-    'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays']
+    'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays',
+    'exa.apiKey', 'exa.monthlyLimit', 'gravity.apiKey', 'features.contextualAds']
   const out = {}
   for (const k of keys) out[k] = await getConfig(k, '')
   return out
@@ -70,7 +71,8 @@ export async function getFeatureFlags() {
     groupDiscussions: s['features.groupDiscussions'] === 'true',
     battles: s['features.battles'] === 'true',
     currentAffairs: s['features.currentAffairs'] === 'true',
-    focusAreas: s['features.focusAreas'] === 'true'
+    focusAreas: s['features.focusAreas'] === 'true',
+    contextualAds: s['features.contextualAds'] === 'true'
   }
 }
 

@@ -15,6 +15,7 @@ export default function Doubts() {
   const [link, setLink] = useState(null) // { code, botUsername }
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const [ad, setAd] = useState(null) // contextual ad from the latest tutor answer (free users)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
 
@@ -47,7 +48,8 @@ export default function Doubts() {
     if (!text) return
     setBusy(true)
     try {
-      await api.post('/ai/doubt', { questionText: '', message: text })
+      const d = await api.post('/ai/doubt', { questionText: '', message: text })
+      setAd(d.ad || null)
       toast('Answered by AI tutor', 'ok')
       setMsg('')
       load()
@@ -148,6 +150,24 @@ export default function Doubts() {
 
       <b className="small mb" style={{ display: 'block' }}>Your doubt history</b>
       {history.length === 0 && <div className="empty">No doubts asked yet — clear that first conceptual block!</div>}
+      {ad && ad.url && (
+        <div className="card mb" style={{ borderColor: 'rgba(99,102,241,0.35)', padding: 12 }}>
+          <div className="spread">
+            <div className="row" style={{ gap: 10, minWidth: 0 }}>
+              {ad.favicon ? <img src={ad.favicon} alt="" width={20} height={20} style={{ borderRadius: 4, flexShrink: 0 }} /> : null}
+              <div style={{ minWidth: 0 }}>
+                <b className="small">{ad.title || ad.brandName}</b>
+                <p className="tiny muted" style={{ margin: '2px 0' }}>{ad.adText}</p>
+                <span className="tiny muted">Sponsored</span>
+              </div>
+            </div>
+            <a className="btn btn-ghost btn-sm" href={ad.url} target="_blank" rel="noreferrer sponsored" style={{ flexShrink: 0 }}
+              onClick={() => { if (ad.impUrl) fetch(ad.impUrl).catch(() => {}) }}>
+              {ad.cta || 'Learn more'}
+            </a>
+          </div>
+        </div>
+      )}
       <div className="col">
         {history.map((h) => (
           <div key={h.id} className="card">

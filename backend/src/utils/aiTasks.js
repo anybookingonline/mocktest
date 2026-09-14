@@ -33,7 +33,7 @@ function examContext(exam) {
   return `Exam: ${exam.name} (${exam.duration_minutes} min, ${exam.total_questions} Q, ${exam.marks_per_question} marks, ${exam.negative_marks} negative marks per wrong answer)\n`
 }
 
-export async function generateQuestionsWithAI({ exam, count = 5, subject = null, chapter = null, topic = null, difficulty = null, seed = null }) {
+export async function generateQuestionsWithAI({ exam, count = 5, subject = null, chapter = null, topic = null, difficulty = null, seed = null, newsHint = '' }) {
   const ctx = examContext(exam)
   const filters = [
     subject && `Subject: ${subject}`,
@@ -43,7 +43,7 @@ export async function generateQuestionsWithAI({ exam, count = 5, subject = null,
   ].filter(Boolean).join('\n')
 
   const system = `You are a senior question paper setter for Indian competitive exams (NEET, JEE, UPSC, SSC, Banking, CAT, GATE, CUET). Generate high-quality, error-free questions.\n\n${QUESTION_SCHEMA}`
-  const user = `${ctx}${filters}\nGenerate ${count} new questions on the given topic(s). Make them non-trivial and exam-like.\n${seed ? `Vary the numbers based on this seed so the set is fresh: "${seed}"` : ''}\nReturn ONLY valid JSON.`
+  const user = `${ctx}${filters}\nGenerate ${count} new questions on the given topic(s). Make them non-trivial and exam-like.\n${newsHint || ''}${seed ? `Vary the numbers based on this seed so the set is fresh: "${seed}"` : ''}\nReturn ONLY valid JSON.`
 
   let lastErr
   for (let attempt = 1; attempt <= 3; attempt++) {

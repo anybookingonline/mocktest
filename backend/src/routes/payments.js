@@ -183,7 +183,7 @@ router.post('/qr/proof', authRequired, proofUpload.single('file'), async (req, r
   }
   let proofPath = req.file ? `/uploads/${req.file.filename}` : pay.payment_proof
   // Archive the proof to B2 when configured and swap in the public URL
-  if (req.file && b2Configured()) {
+  if (req.file && await b2Configured()) {
     try {
       const url = await putFile(req.file.path, { prefix: 'payment-proofs', filename: req.file.filename, contentType: req.file.mimetype })
       if (url) proofPath = url
