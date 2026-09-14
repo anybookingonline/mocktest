@@ -1,23 +1,38 @@
-// Aisepadho service worker — v3.
-// Fix for the white-screen crash: the old worker served a cached index.html
-// that referenced hashed assets from a previous deploy. Once those hashed
-// files were replaced on the server, the stale HTML loaded 404 JS and the app
-// died. Strategy now:
-//   - navigations (index.html / SPA routes): NETWORK FIRST, cache fallback.
-//     Fresh HTML is cached on every successful load, so offline still works
-//     and a new deploy is always picked up.
-//   - /assets/* (content-hashed Vite output): CACHE FIRST. A hashed filename
-//     never changes meaning, so cached == fresh forever.
-//   - /api, /uploads: never cached (live data and user files).
-//   - old-version caches are purged on activate.
-const CACHE = 'aisepadho-v3'
-const PRECACHE = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png']
+// Aisepadho service worker — v4.
+// Fix for the standalone "opens then immediately closes" install crash.
+//
+// Root cause: on Android/Chrome the standalone launch performs the very first
+// navigation BEFORE the browser UI has decided the app is alive. If that first
+// navigation has to go to the network and anything is slow (or the response is
+// not a clean 200 HTML), Chrome treats the activity as failed and closes the
+// app — which looks like "opens and instantly closes, repeatedly".
+//
+// Fix: guarantee an always-cached, instantly-responding app shell:
+//   - install: precache '/' and verify it is real HTML before declaring install
+//     success (a broken precache would otherwise poison the offline shell).
+//   - navigation requests: respond IMMEDIATELY from the cached shell
+//     (cache-first), then refresh the cache silently in the background
+//     (stale-while-revalidate). Users always get an instant standalone start;
+//     a fresh deploy is picked up on the next load instead of breaking this one.
+//   - offline fallback + a '/?sw-recovered=1' reload path if even the cache is
+//     missing, so the app can self-heal instead of crashing.
+// Assets are content-hashed, so cache-first remains correct for them.
+const CACHE = 'aisepadho-v4'
+const SHELL = '/'
+const PRECACHE = [SHELL, '/manifest.json', '/icon-192.png', '/icon-512.png', '/icon-maskable.png', '/apple-touch-icon.png']
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE)
-    // Precache best-effort: one bad asset must not break the install.
     await Promise.all(PRECACHE.map((u) => cache.add(u).catch(() => {})))
+    // Verify the shell actually cached as HTML; otherwise fetch+store manually.
+    const shell = await cache.match(SHELL)
+    if (!shell || !(await shell.text()).includes('<div id="root">')) {
+      try {
+        const res = await fetch(SHELL, { cache: 'no-store' })
+        if (res.ok) await cache.put(SHELL, res.clone())
+      } catch { /* offline install attempt; activation will retry on load */ }
+    }
     await self.skipWaiting()
   })())
 })
@@ -30,6 +45,21 @@ self.addEventListener('activate', (e) => {
   })())
 })
 
+// Background-refresh the shell when a normal browser-tab page becomes visible.
+self.addEventListener('message', (e) => {
+  if (e.data === 'sw:refresh-shell') {
+    e.waitUntil((async () => {
+      try {
+        const res = await fetch(SHELL, { cache: 'no-store' })
+        if (res.ok) {
+          const cache = await caches.open(CACHE)
+          await cache.put(SHELL, res.clone())
+        }
+      } catch { /* offline — keep old shell */ }
+    })())
+  }
+})
+
 self.addEventListener('fetch', (e) => {
   const req = e.request
   if (req.method !== 'GET') return
@@ -37,25 +67,35 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/uploads')) return
 
-  // SPA navigations: fresh HTML from network, cached copy only offline.
+  // Navigations: instant cached shell + silent background refresh.
   if (req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html')) {
     e.respondWith((async () => {
-      try {
-        const fresh = await fetch(req)
-        if (fresh.ok) {
-          const cache = await caches.open(CACHE)
-          cache.put('/', fresh.clone()).catch(() => {})
-        }
-        return fresh
-      } catch {
-        return (await caches.match('/')) || (await caches.match(req)) ||
-          new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
+      const cache = await caches.open(CACHE)
+      const shell = (await cache.match(SHELL)) || (await cache.match(req))
+      if (shell) {
+        // Refresh behind the response — never blocks the user.
+        e.waitUntil((async () => {
+          try {
+            const fresh = await fetch(SHELL, { cache: 'no-store' })
+            if (fresh.ok) await cache.put(SHELL, fresh.clone())
+          } catch { /* offline — cached shell stands */ }
+        })())
+        return shell
       }
+      // No shell yet (first ever run): try network, else self-heal reload.
+      try {
+        const fresh = await fetch(SHELL, { cache: 'no-store' })
+        if (fresh.ok) {
+          await cache.put(SHELL, fresh.clone())
+          return fresh
+        }
+      } catch { /* fallthrough */ }
+      return Response.redirect('/?sw-recovered=1', 302)
     })())
     return
   }
 
-  // Hashed build assets: immutable — cache first.
+  // Hashed build assets: immutable — cache first, then network.
   if (url.pathname.startsWith('/assets/')) {
     e.respondWith((async () => {
       const hit = await caches.match(req)
@@ -74,7 +114,7 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // Everything else (icons, manifest, fonts): stale-while-revalidate.
+  // Everything else (icons, fonts, manifest): stale-while-revalidate.
   e.respondWith((async () => {
     const cache = await caches.open(CACHE)
     const hit = await cache.match(req)

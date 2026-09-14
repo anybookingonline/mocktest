@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useToast } from '../../components/ui.jsx'
 import { Brand } from '../../components/Layout.jsx'
+import { LangSwitcher } from '../../context/LangContext.jsx'
 import { api } from '../../api/client.js'
 
 export function Splash() {
@@ -19,6 +20,10 @@ export function Splash() {
 export function AuthShell({ children, title, subtitle }) {
   return (
     <div className="auth-wrap">
+      {/* Language switcher — logged-out users bhi EN/Hinglish/हिं choose kar sakte hain */}
+      <div style={{ position: 'fixed', top: 14, right: 14, zIndex: 50 }}>
+        <LangSwitcher />
+      </div>
       <div className="auth-card">
         <Brand />
         <h1 style={{ marginTop: 18 }}>{title}</h1>

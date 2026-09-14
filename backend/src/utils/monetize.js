@@ -8,7 +8,8 @@
 //
 // Key resolution: env GRAVITY_API_KEY wins; Admin → AI Config 'gravity.apiKey'
 // fallback. Fail-open: any error → no ads rendered, app unaffected.
-// Admin kill-switch: features.contextualAds toggle (default off).
+// Kill-switch: features.contextualAds = 'false' explicitly disables ads even
+// when a key is configured. No key configured → no ads (nothing to sell).
 // ---------------------------------------------------------------------------
 
 import { getConfig } from './aiService.js'
@@ -26,8 +27,10 @@ export async function gravityConfigured() {
  * Returns the Gravity ad object or null (no match / not configured / disabled).
  */
 export async function getContextualAd({ messages, sessionId, user, device }) {
-  const enabled = (await getConfig('features.contextualAds', 'false')) === 'true'
-  if (!enabled) return null
+  // Ads run whenever a publisher key exists. Admin can still force them off
+  // with an explicit features.contextualAds = 'false' (AI Config kill-switch).
+  const flag = await getConfig('features.contextualAds')
+  if (flag === 'false') return null
   const apiKey = await getGravityKey()
   if (!apiKey) return null
   if (!device?.ua || !device?.ip) return null // Gravity 400s without these — skip early
@@ -59,12 +62,11 @@ export async function getContextualAd({ messages, sessionId, user, device }) {
 export function publicAdFields(ad) {
   if (!ad) return null
   return {
-    adText: ad.adText || '',
-    title: ad.title || '',
-    brandName: ad.brandName || '',
-    cta: ad.cta || '',
-    url: ad.clickUrl || ad.url, // tracked click URL, not the raw landing page
-    favicon: ad.favicon || '',
-    impUrl: ad.impUrl || ''
+    id: ad.id || null,
+    title: ad.title || ad.headline || 'Sponsored',
+    body: ad.body || ad.description || '',
+    sponsor: ad.sponsor || ad.advertiser || null,
+    clickUrl: ad.clickUrl || ad.click_url || null,
+    impUrl: ad.impUrl || ad.imp_url || null
   }
 }

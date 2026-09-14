@@ -4,13 +4,15 @@ import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, Modal, useToast, fmtDuration } from '../../components/ui.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useLang } from '../../context/LangContext.jsx'
 
 export default function Adaptive() {
   const nav = useNavigate()
   const toast = useToast()
   const [exams, setExams] = useState([])
   const [syllabus, setSyllabus] = useState([])
-  const [cfg, setCfg] = useState({ examId: '', chapterId: '', topicId: '', num: 10 })
+  const { lang } = useLang()
+  const [cfg, setCfg] = useState({ examId: '', chapterId: '', topicId: '', num: 10, language: 'en' })
   const [sessionId, setSessionId] = useState(null)
   const [question, setQuestion] = useState(null)
   const [level, setLevel] = useState('medium')
@@ -42,11 +44,18 @@ export default function Adaptive() {
     }
   }, [user, exams])
 
+  // Default question language follows the student's UI language choice
+  // (Hinglish/Hindi UI → Hindi questions; English UI → English questions).
+  // The student can still override per session in the start form.
+  useEffect(() => {
+    setCfg((c) => ({ ...c, language: lang === 'en' ? 'en' : 'hi' }))
+  }, [lang])
+
   const start = async () => {
     if (!cfg.examId) { toast('Select an exam', 'err'); return }
     setBusy(true)
     try {
-      const d = await api.post('/ai/adaptive/start', { examId: Number(cfg.examId), subjectId: null, chapterId: cfg.chapterId ? Number(cfg.chapterId) : null, topicId: cfg.topicId ? Number(cfg.topicId) : null, numQuestions: Number(cfg.num) })
+      const d = await api.post('/ai/adaptive/start', { examId: Number(cfg.examId), subjectId: null, chapterId: cfg.chapterId ? Number(cfg.chapterId) : null, topicId: cfg.topicId ? Number(cfg.topicId) : null, numQuestions: Number(cfg.num), language: cfg.language || 'en' })
       // remember the student's exam choice for next time
       if (String(user?.exam_id) !== String(cfg.examId)) {
         api.put('/auth/me', { exam_id: Number(cfg.examId), target_exam: exams.find((e) => String(e.id) === String(cfg.examId))?.name || null }).catch(() => {})
@@ -137,6 +146,13 @@ export default function Adaptive() {
             </label>
             <label className="field"><span>Questions</span>
               <input className="input" type="number" min="5" max="50" value={cfg.num} onChange={(e) => setCfg({ ...cfg, num: e.target.value })} />
+            </label>
+            <label className="field"><span>Question language</span>
+              <select className="select" value={cfg.language} onChange={(e) => setCfg({ ...cfg, language: e.target.value })}>
+                <option value="en">English</option>
+                <option value="hi">हिंदी</option>
+                <option value="bilingual">English + हिंदी (bilingual)</option>
+              </select>
             </label>
           </div>
           <button className="btn btn-primary" onClick={start} disabled={busy}>{busy ? 'Starting…' : 'Start adaptive session'}</button>

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, useToast } from '../../components/ui.jsx'
+import { useLang } from '../../context/LangContext.jsx'
 
 const MODES = [
   { key: 'chapter', label: 'Chapter-wise', icon: '📖', desc: 'Build a test from selected chapters' },
@@ -16,12 +17,13 @@ export default function Practice() {
   const [params] = useSearchParams()
   const nav = useNavigate()
   const toast = useToast()
+  const { t } = useLang()
   const [exams, setExams] = useState([])
   const [examId, setExamId] = useState(Number(params.get('exam')) || null)
   const [syllabus, setSyllabus] = useState([])
   const [selected, setSelected] = useState({}) // id -> type(subject/chapter/topic)
   const [mode, setMode] = useState('chapter')
-  const [cfg, setCfg] = useState({ numQuestions: 20, duration: 30, difficulty: 'all', difficultyMix: { easy: 30, medium: 50, hard: 20 } })
+  const [cfg, setCfg] = useState({ numQuestions: 20, duration: 30, difficulty: 'all', difficultyMix: { easy: 30, medium: 50, hard: 20 }, language: 'en' })
   const [busy, setBusy] = useState(false)
 
   useEffect(() => { api.get('/exams').then((d) => setExams(d.exams)) }, [])
@@ -152,6 +154,13 @@ export default function Practice() {
           </label>
           <label className="field"><span>Duration (minutes)</span>
             <input className="input" type="number" min="1" value={cfg.duration} onChange={(e) => setCfg({ ...cfg, duration: e.target.value })} />
+          </label>
+          <label className="field"><span>{t('lang.qhint')}</span>
+            <select className="input" value={cfg.language} onChange={(e) => setCfg({ ...cfg, language: e.target.value })}>
+              <option value="en">{t('lang.qen')}</option>
+              <option value="hi">{t('lang.qhi')}</option>
+              <option value="bilingual">{t('lang.qboth')}</option>
+            </select>
           </label>
           {mode === 'custom' && (
             <label className="field"><span>Difficulty mix (E:M:H %)</span>

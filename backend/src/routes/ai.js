@@ -77,12 +77,13 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
 
 // POST /api/ai/explain - generate/refresh explanation for a question
 router.post('/explain', aiLimiter(), async (req, res) => {
-  const { questionId } = req.body || {}
+  const { questionId, language } = req.body || {}
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
   if (!q) return res.status(404).json({ error: 'Question not found' })
   try {
     const explanation = await explainQuestionWithAI({
-      questionText: q.question_text, options: JSON.parse(q.options_json || '[]'), correctAnswer: q.correct_answer
+      questionText: q.question_text, options: JSON.parse(q.options_json || '[]'), correctAnswer: q.correct_answer,
+      language: language || null
     })
     await db.prepare('UPDATE questions SET explanation = ? WHERE id = ?').run(explanation, q.id)
     res.json({ explanation })
@@ -245,7 +246,8 @@ async function generateAdaptiveBatch(state, level) {
       exam, count: 3,
       subject: subject?.name || null, chapter: chapter?.name || null, topic: topic?.name || null,
       difficulty: DIFF_NAMES[level] || 'medium',
-      seed: `adaptive-${state.completed?.length || 0}-${Date.now()}`
+      seed: `adaptive-${state.completed?.length || 0}-${Date.now()}`,
+      language: cfg.language || null
     })
     if (!Array.isArray(list) || !list.length) return false
     await persistQuestions(list, {

@@ -107,7 +107,8 @@ router.post('/ai', aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
       const want = Math.min(batch, num - offset)
       tasks.push(generateQuestionsWithAI({
         exam, count: want, subject: config.subject || null, chapter: config.chapter || null,
-        topic: config.topic || null, difficulty: config.difficulty || null, seed: `${Date.now()}-${offset}`
+        topic: config.topic || null, difficulty: config.difficulty || null, seed: `${Date.now()}-${offset}`,
+        language: config.language || null
       }))
     }
     const results = await Promise.all(tasks)

@@ -33,7 +33,7 @@ function examContext(exam) {
   return `Exam: ${exam.name} (${exam.duration_minutes} min, ${exam.total_questions} Q, ${exam.marks_per_question} marks, ${exam.negative_marks} negative marks per wrong answer)\n`
 }
 
-export async function generateQuestionsWithAI({ exam, count = 5, subject = null, chapter = null, topic = null, difficulty = null, seed = null, newsHint = '' }) {
+export async function generateQuestionsWithAI({ exam, count = 5, subject = null, chapter = null, topic = null, difficulty = null, seed = null, newsHint = '', language = null }) {
   const ctx = examContext(exam)
   const filters = [
     subject && `Subject: ${subject}`,
@@ -42,7 +42,18 @@ export async function generateQuestionsWithAI({ exam, count = 5, subject = null,
     difficulty && `Difficulty level: ${difficulty}`
   ].filter(Boolean).join('\n')
 
-  const system = `You are a senior question paper setter for Indian competitive exams (NEET, JEE, UPSC, SSC, Banking, CAT, GATE, CUET). Generate high-quality, error-free questions.\n\n${QUESTION_SCHEMA}`
+  // Language policy: Indian exams (UPSC/SSC/Banking) publish bilingual papers,
+  // so students can request English, Hindi, or bilingual questions. Regional
+  // languages are intentionally not offered — AI translation of technical
+  // exam terminology is unreliable and bilingual papers are the standard.
+  const LANG_RULE = {
+    en: 'Write ALL question text, options and explanations in clear English only.',
+    hi: 'Write ALL question text, options and explanations in natural, correct Hindi (Devanagari). Keep standard technical terms bilingual where real exam papers do, e.g. \"demand curve (मांग वक्र)\", \"momentum (संवेग)\". Use the phrasing style of Ncert/official Hindi exam papers.',
+    bilingual: 'Write every question and its options TWICE, exactly like real bilingual Indian exam papers: first the English version, then the Hindi version in Devanagari on the next line inside the same question string (format: "English question text\\n\\nहिंदी अनुवाद: ..." — options likewise "A. English option / हिंदी विकल्प"). Explanations: English first, then a short Hindi summary line.'
+  }
+  const langRule = LANG_RULE[language] || LANG_RULE.en
+
+  const system = `You are a senior question paper setter for Indian competitive exams (NEET, JEE, UPSC, SSC, Banking, CAT, GATE, CUET). Generate high-quality, error-free questions.\n\nLANGUAGE: ${langRule}\n\n${QUESTION_SCHEMA}`
   const user = `${ctx}${filters}\nGenerate ${count} new questions on the given topic(s). Make them non-trivial and exam-like.\n${newsHint || ''}${seed ? `Vary the numbers based on this seed so the set is fresh: "${seed}"` : ''}\nReturn ONLY valid JSON.`
 
   let lastErr
@@ -63,14 +74,23 @@ export async function generateQuestionsWithAI({ exam, count = 5, subject = null,
 }
 
 export async function solveDoubtWithAI({ questionText, options, studentMessage, explanation }) {
-  const system = `You are a friendly, expert exam coach for Indian competitive exams. Resolve the student's doubt about the question below. Be concise but complete: clarify the concept, show the reasoning, and give an easy memorisation tip if relevant. Answer in the same language the student uses (Hinglish/Hindi/English ok).`
+  // Mirror the student's language: Hinglish question → Hinglish answer,
+  // Hindi → Hindi, English → English. Never force a single language.
+  const system = `You are a friendly, expert exam coach for Indian competitive exams. Resolve the student's doubt about the question below. Be concise but complete: clarify the concept, show the reasoning, and give an easy memorisation tip if relevant.\n\nLANGUAGE RULE (follow strictly): Reply in EXACTLY the language the student's doubt is written in. If the student writes in Hinglish (Roman-script Hindi mixed with English), reply in natural Hinglish the same way. If the student writes in Hindi (Devanagari), reply fully in Hindi. If the student writes in English, reply fully in English. Never switch to a different language than the student used, and never mix scripts unless the student did.`
   const user = `QUESTION:\n${questionText}\n${options?.length ? 'OPTIONS:\n' + options.join('\n') : ''}\n${explanation ? 'GIVEN EXPLANATION:\n' + explanation : ''}\n\nSTUDENT DOUBT:\n${studentMessage}`
   const res = await aiChat({ system, messages: [{ role: 'user', content: user }], json: false, action: 'doubt_solving' })
   return res.data.trim()
 }
 
-export async function explainQuestionWithAI({ questionText, options, correctAnswer }) {
-  const system = `You are an expert exam tutor. Write a crisp, step-by-step solution for the question. Explain the core concept, the method, and common mistakes.`
+export async function explainQuestionWithAI({ questionText, options, correctAnswer, language = null }) {
+  // No student message to mirror, so an explicit UI language (when the caller
+  // knows the student's preference) steers the explanation; default English.
+  const langRule = language === 'hi'
+    ? 'Write the explanation in natural Hindi (Devanagari), keeping standard technical terms bilingual like official Hindi exam papers.'
+    : language === 'hinglish'
+      ? 'Write the explanation in friendly Hinglish (Roman-script Hindi mixed with English) — the tone Indian students actually study in.'
+      : 'Write the explanation in clear English.'
+  const system = `You are an expert exam tutor. Write a crisp, step-by-step solution for the question. Explain the core concept, the method, and common mistakes.\n\nLANGUAGE: ${langRule}`
   const user = `QUESTION:\n${questionText}\n${options?.length ? 'OPTIONS:\n' + options.join('\n') : ''}\nCORRECT ANSWER: ${correctAnswer}\n\nGive a detailed step-by-step solution.`
   const res = await aiChat({ system, messages: [{ role: 'user', content: user }], json: false, action: 'explain' })
   return res.data.trim()

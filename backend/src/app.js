@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import db from './db.js'
 import { cacheStatus } from './utils/redis.js'
 import { b2Status } from './utils/b2.js'
+import { gravityConfigured } from './utils/monetize.js'
 import { rateLimit } from './middleware/rateLimit.js'
 
 // Patch Express 4 to forward rejected promises from async handlers to the
@@ -73,7 +74,7 @@ if (!skipRateLimit) {
 app.get('/api/health', async (req, res) => {
   try {
     const row = await db.prepare('SELECT COUNT(*) c FROM questions').get()
-    res.json({ ok: true, time: new Date().toISOString(), questions: row.c, cache: cacheStatus(), storage: await b2Status() })
+    res.json({ ok: true, time: new Date().toISOString(), questions: row.c, cache: cacheStatus(), storage: await b2Status(), monetization: { ads: (await gravityConfigured()) ? 'gravity' : 'off' } })
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message })
   }

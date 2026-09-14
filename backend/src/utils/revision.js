@@ -155,7 +155,7 @@ export async function generateDoubtMock({ doubtId, userId }) {
 
   const list = await generateQuestionsWithAI({
     exam, count: 3, topic: topic || String(d.message).slice(0, 140), seed: `doubt-${doubtId}`
-  })
+  }) // doubt-practice mirrors nothing: language param intentionally omitted (bilingual default)
   if (!Array.isArray(list) || !list.length) return { error: 'AI could not generate practice questions for this doubt. Try again.' }
 
   await persistQuestions(list, { exam, source: 'ai', sourceMeta: { doubtId }, mapping })

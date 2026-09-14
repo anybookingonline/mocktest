@@ -2,24 +2,25 @@ import React, { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { BrandLogo } from '../context/BrandingContext.jsx'
+import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import { api } from '../api/client.js'
 
 const STUDENT_NAV = [
-  { to: '/', label: 'Dashboard', icon: '📊', group: 'Learn' },
-  { to: '/practice', label: 'Practice', icon: '✏️' },
-  { to: '/tests', label: 'Mock Tests', icon: '⏱️' },
-  { to: '/adaptive', label: 'Adaptive Practice', icon: '🧠' },
-  { to: '/focus', label: 'AI Focus Areas', icon: '🔥' },
-  { to: '/current-affairs', label: 'Current Affairs', icon: '📰' },
-  { to: '/doubts', label: 'Doubt Solving', icon: '💬' },
-  { to: '/groups', label: 'Group Study', icon: '👥' },
-  { to: '/battles', label: 'Quiz Battles', icon: '⚔️' },
-  { to: '/bookmarks', label: 'Bookmarked', icon: '🔖' },
-  { to: '/history', label: 'Test History', icon: '🗂️' },
-  { to: '/retention', label: 'Data Retention', icon: '🔒', group: 'Track' },
-  { to: '/revision', label: 'AI Revision', icon: '🔁' },
-  { to: '/rankings', label: 'Rankings', icon: '🏆', group: 'Track' },
-  { to: '/analytics', label: 'Analytics & Report', icon: '📈' }
+  { to: '/', label: 'nav.dashboard', icon: '📊', group: 'Learn' },
+  { to: '/practice', label: 'nav.practice', icon: '✏️' },
+  { to: '/tests', label: 'nav.tests', icon: '⏱️' },
+  { to: '/adaptive', label: 'nav.adaptive', icon: '🧠' },
+  { to: '/focus', label: 'nav.focus', icon: '🔥' },
+  { to: '/current-affairs', label: 'nav.ca', icon: '📰' },
+  { to: '/doubts', label: 'nav.doubts', icon: '💬' },
+  { to: '/groups', label: 'nav.groups', icon: '👥' },
+  { to: '/battles', label: 'nav.battles', icon: '⚔️' },
+  { to: '/bookmarks', label: 'nav.bookmarks', icon: '🔖' },
+  { to: '/history', label: 'nav.history', icon: '🗂️' },
+  { to: '/retention', label: 'nav.retention', icon: '🔒', group: 'Track' },
+  { to: '/revision', label: 'nav.revision', icon: '🔁' },
+  { to: '/rankings', label: 'nav.rankings', icon: '🏆', group: 'Track' },
+  { to: '/analytics', label: 'nav.analytics', icon: '📈' }
 ]
 
 // Feature flags with a 60s module cache so every page mount doesn't re-fetch.
@@ -58,7 +59,10 @@ export function Brand({ onClick }) {
   )
 }
 
+// Nav labels: raw strings (admin pages) and i18n keys (student pages) both
+// render through the language context.
 function SideNav({ nav, active, onNavigate }) {
+  const { t } = useLang()
   let lastGroup = null
   return (
     <nav>
@@ -70,7 +74,7 @@ function SideNav({ nav, active, onNavigate }) {
             className={({ isActive }) => `nav-item ${isActive || active === item.to ? 'active' : ''}`}
             onClick={onNavigate}
           >
-            <span className="ic">{item.icon}</span>{item.label}
+            <span className="ic">{item.icon}</span>{t(item.label)}
           </NavLink>
         )
         const groupLabel = item.group && item.group !== lastGroup
@@ -88,6 +92,7 @@ function SideNav({ nav, active, onNavigate }) {
 
 export function AppShell({ nav, title, children, footer, onTitle }) {
   const { user, logout } = useAuth()
+  const { t } = useLang()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   // Recognition chip: live points + level in the topbar (students only)
@@ -119,6 +124,7 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
           <button className="burger" onClick={() => setOpen(true)}>☰</button>
           <h1>{typeof title === 'function' ? title() : title}</h1>
           <div className="spacer" />
+          <LangSwitcher compact />
           <div className="user-chip">
             {user?.role !== 'admin' && pts && (
               <button className="chip" style={{ cursor: 'pointer', fontWeight: 700 }}
@@ -129,7 +135,7 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
             )}
             <span className="small muted">{user?.name}</span>
             <div className="avatar">{initial}</div>
-            <button className="btn btn-ghost btn-sm" onClick={() => { logout(); navigate('/login') }}>Logout</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { logout(); navigate('/login') }}>{t('common.logout')}</button>
           </div>
         </div>
         <div className="content">{children}</div>

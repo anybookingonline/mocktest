@@ -341,13 +341,13 @@ export default function AdminAI() {
             <input className="input" type="password" placeholder="publisher api key" value={cfg['gravity.apiKey'] || ''} onChange={(e) => set('gravity.apiKey', e.target.value)} />
           </label>
           <label className="field"><span>Ads ON/OFF</span>
-            <select className="select" value={cfg['features.contextualAds'] === 'true' ? 'true' : 'false'} onChange={(e) => set('features.contextualAds', e.target.value)}>
-              <option value="false">Off — koi ad nahi (default)</option>
-              <option value="true">On — free users ke AI answers ke neeche sponsored suggestion</option>
+            <select className="select" value={cfg['features.contextualAds'] === 'false' ? 'false' : 'true'} onChange={(e) => set('features.contextualAds', e.target.value)}>
+              <option value="true">On (default) — free users ke AI answers ke neeche sponsored suggestion</option>
+              <option value="false">Off — kill-switch, koi ad nahi</option>
             </select>
           </label>
         </div>
-        <p className="tiny muted mb">Pay-per-impression revenue. Ads sirf free users ko dikhte hain (AI Power Pack wale ko clean tutor), native card style, koi banner/spam nahi. Ad fail → kuch nahi dikhta, app kabhi nahi toot-ta.</p>
+        <p className="tiny muted mb">Key dali hai to ads chalu — kill-switch sirf explicit "Off" par. Pay-per-impression revenue. Ads sirf free users ko dikhte hain (AI Power Pack wale ko clean tutor), native card style, koi banner/spam nahi. Ad fail → kuch nahi dikhta, app kabhi nahi toot-ta.</p>
 
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Telegram bot wiring</b>

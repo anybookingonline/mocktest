@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
+import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 
 const EXAMS = [
   { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', note: 'Engineering' },
@@ -31,12 +32,24 @@ const NEW_FEATURES = [
   { icon: '🔥', title: 'AI Focus Areas', text: 'Pichhle saalon ke papers ka data scan — kaunsa topic baar-baar poocha jata hai, last year kab aaya. Smart prioritization.', tag: 'NEW' },
   { icon: '🔁', title: 'Spaced Revision', text: 'Bhoolne ka science: har topic apne box me, 1-3-7-14-30 din ke cycle par. "Aaj ye revise karo" roz ka plan + Telegram reminder.', tag: 'NEW' },
   { icon: '🎯', title: 'Doubt → Practice Loop', text: 'Har solved doubt se AI 3 similar questions banata hai — turant practice test. Jo doubt aaya, wo pakka fix.', tag: 'NEW' },
-  { icon: '🇮🇳', title: 'All-India Rank + Points', text: 'AIR #? of thousands — percentile ke saath. Har action par points (test, battle, doubt, group), levels aur recognition wall.', tag: 'NEW' }
+  { icon: '🇮🇳', title: 'All-India Rank + Points', text: 'AIR #? of thousands — percentile ke saath. Har action par points (test, battle, doubt, group), levels aur recognition wall.', tag: 'NEW' },
+  { icon: '📰', title: 'Current Affairs Pro', text: 'AI roz 10 MCQs banata hai — pichhle 7 din ki ASLI news se (real headlines, purani knowledge nahi), aapke target exam ke hisaab se. UPSC/Banking/SSC walon ka daily habit.', tag: 'NEW' },
+  { icon: '💬', title: 'Telegram Tutor', text: 'Doubts, revision reminders aur welcome messages — sab Telegram par. App kholne ki bhi zaroorat nahi, bot hi coach ban jata hai.', tag: 'NEW' },
+  { icon: '📲', title: 'Installable App (PWA)', text: 'Browser se ek tap me phone par install — home screen icon, fast loading, no Play Store wait. Jaise native app, update apne aap.', tag: 'NEW' }
+]
+
+// Power-ups — optional paid add-ons (pricing admin-controlled, isliye page par hardcoded nahi)
+const POWERUPS = [
+  { icon: '⚡', title: 'AI Power Pack', text: 'AI generation ka full boost — unlimited fresh questions, priority generation, tougher sets jab ready ho.' },
+  { icon: '🎙️', title: 'Voice Doubts', text: 'Bolkar sawal poocho — Hindi/English voice input, AI bolke jawab de. Haath busy ho to bhi padhai chalti hai.' },
+  { icon: '📰', title: 'Current Affairs Pro', text: 'Daily 10 AI MCQs real news se — exam-scoped, aaj ke headlines par based.' },
+  { icon: '🔥', title: 'AI Focus Areas', text: 'Pichhle saalon ke papers scan — kaunsa topic baar-baar aata hai, wahi pehle master karo.' }
 ]
 
 export default function Landing() {
   const nav = useNavigate()
   const brand = useBranding()
+  const { t } = useLang()
   const tagline = brand.tagline || 'Padho. Test do. Aage badho.'
   const [stats, setStats] = useState(null)
 
@@ -49,8 +62,9 @@ export default function Landing() {
       <header className="topbar">
         <BrandLogo />
         <div className="spacer" />
-        <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>Log in</button>
-        <button className="btn btn-primary btn-sm" onClick={() => nav('/register')}>Sign up free</button>
+        <LangSwitcher />
+        <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>{t('cta.login')}</button>
+        <button className="btn btn-primary btn-sm" onClick={() => nav('/register')}>{t('cta.signup')}</button>
       </header>
 
       <div className="hero">
@@ -58,13 +72,14 @@ export default function Landing() {
           {stats ? <span className="chip">{stats.questions}+ AI & PYQ questions ready</span> : null}
           <span className="chip">8 exams supported</span>
           <span className="chip">Battles, Groups & AIR rankings</span>
-          <span className="chip">PWA-ready</span>
+          <span className="chip">Daily AI current affairs</span>
+          <span className="chip">Telegram tutor + installable app</span>
         </div>
         <h1>Master Every Exam with<br /><span>AI-Powered Practice</span></h1>
-        <p>{tagline}. Mock tests, adaptive learning, PYQ papers, real exam simulation — plus 1v1 battles, group study, spaced revision and an All-India leaderboard that makes prep addictive.</p>
+        <p>{tagline}. Mock tests, adaptive learning, PYQ papers, real exam simulation — plus 1v1 battles, group study, spaced revision, daily current affairs from real news, a Telegram tutor and an All-India leaderboard that makes prep addictive.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => nav('/register')}>Start practicing free</button>
-          <button className="btn btn-ghost" style={{ padding: '13px 26px' }} onClick={() => nav('/schools')}>For Schools →</button>
+          <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => nav('/register')}>{t('cta.start')}</button>
+          <button className="btn btn-ghost" style={{ padding: '13px 26px' }} onClick={() => nav('/schools')}>{t('cta.schools')}</button>
         </div>
       </div>
 
@@ -105,6 +120,19 @@ export default function Landing() {
           ))}
         </div>
 
+        {/* Power-ups — optional add-ons */}
+        <h2 className="mb" style={{ textAlign: 'center' }}>Jab basic master ho jaye — <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Power-ups unlock karo</span></h2>
+        <p className="small muted mb" style={{ textAlign: 'center' }}>Optional add-ons — free plan me poora core milta hai, power-ups unko aur tez karte hain.</p>
+        <div className="grid grid-4 mb">
+          {POWERUPS.map((p) => (
+            <div key={p.title} className="card">
+              <div style={{ fontSize: 24 }}>{p.icon}</div>
+              <b className="small" style={{ display: 'block', marginTop: 6 }}>{p.title}</b>
+              <p className="tiny muted" style={{ marginTop: 6 }}>{p.text}</p>
+            </div>
+          ))}
+        </div>
+
         {/* Social proof strip — engagement mechanics */}
         <div className="card muted-bg mb" style={{ border: 'none' }}>
           <div className="grid grid-3" style={{ textAlign: 'center', gap: 12 }}>
@@ -127,10 +155,10 @@ export default function Landing() {
         </div>
 
         <div className="card muted-bg mb" style={{ border: 'none', textAlign: 'center' }}>
-          <b>Run your school or coaching on {brand.platformName}</b>
-          <p className="small muted mt">White-label AI test platform — your brand, your tests, parent-ready progress reports. Free 30-day pilot.</p>
+          <b>Run your school or coaching on {brand.platformName} — students aur teachers dono ke liye</b>
+          <p className="small muted mt">White-label AI test platform — your brand, your tests, AI for your teachers (Teach Kits, Classroom Live Quiz, Soft Skills) aur parent-ready progress reports. Free 30-day pilot.</p>
           <div className="row mt" style={{ justifyContent: 'center' }}>
-            <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 For Schools & Coaching →</button>
+            <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 {t('cta.guruline')}</button>
           </div>
         </div>
       </div>

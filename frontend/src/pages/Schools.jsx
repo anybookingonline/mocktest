@@ -31,9 +31,29 @@ const NUMBERS = [
   { v: '₹0', l: 'Pilot cost for 30 days' }
 ]
 
+// Guru Studio — teacher-facing AI (Teaching Excellence, docs/teacher-features.md Section 7)
+const GURU = [
+  {
+    icon: '📚', title: 'Teach Kit — topic-wise AI lesson pack',
+    points: ['Har topic ka concept map + real-life analogies + 30-min lesson plan', 'Common misconceptions — generic list nahi, AAPKE students ke real weak-topic data se', 'PYQ frequency + difficulty ladder — kya pehle padhana hai, AI batata hai', 'Class ke baad homework auto-assign (platform test)']
+  },
+  {
+    icon: '🎮', title: 'Classroom Live Quiz — puri class diwani',
+    points: ['Kahoot-style: projector par host screen, students phone se 4-digit PIN se join', '15-sec timer, live leaderboard, speed bonus, winner celebration', 'Modes: Rapid Fire · Team Battle · Revision Rumble (due revision ke questions)', 'Ye feature student-only apps (Testbook/Adda247) ke paas NAHI hai']
+  },
+  {
+    icon: '👍', title: 'Confusion Check — 2-second class pulse',
+    points: ['Beech class me poll: "ye concept clear hai?" — students 👍/👎 phone par', '30%+ confused? AI turant alternate explanation + dusra analogy deta hai', 'Class green hai to zero AI cost — sirf samajh na aaye to kharcha']
+  },
+  {
+    icon: '🌟', title: 'Personality & Soft Skills (NEP-aligned)',
+    points: ['GD Simulator — AI 3-4 personas ke saath group discussion + feedback', 'One-minute speech — voice input, filler words & pace feedback', 'Interview drills + Personality Report Card (radar chart) — PTM ke liye printable']
+  }
+]
+
 const STEPS = [
   { n: 1, t: 'Free 30-day pilot', d: 'Ek class (max 60 students) ke saath poora platform — free. Koi card, koi contract nahi.' },
-  { n: 2, t: 'Teachers onboard', d: 'Aapke teachers papers upload karte hain aur tests assign karte hain. Hum 30-minute walkthrough dete hain.' },
+  { n: 2, t: 'Teachers onboard', d: 'Papers upload + tests assign. Guru Studio me Teach Kit se padhate hain, Classroom Live Quiz se class jodte hain — 30-min walkthrough free.' },
   { n: 3, t: 'Parents see results', d: 'Weekly progress reports — school ka logo ke saath. PTM me yehi sabse zyada pasand aata hai.' },
   { n: 4, t: 'Go full school', d: 'Pilot pasand aaye to annual plan — per-student pricing, school-wide rollout.' }
 ]
@@ -53,17 +73,18 @@ export default function Schools() {
       <div className="hero">
         <div className="pill mb">
           <span className="chip">🏫 White-label platform</span>
+          <span className="chip">🎓 AI for teachers — Guru Studio</span>
           <span className="chip">Free 30-day pilot</span>
           <span className="chip">Setup in 1 day</span>
         </div>
         <h1>Apne School ka Apna<br /><span>AI Test Platform</span></h1>
         <p>
-          AI question generation, previous-year paper digitization, real-exam simulation aur parent-ready
-          progress reports — sab aapke school ke brand ke saath. Students app use karte hain,
-          aap control me rehte hain.
+          AI question generation, previous-year paper digitization, real-exam simulation, parent-ready
+          progress reports — aur ab <b>teachers ke liye bhi AI</b> (Teach Kit, Classroom Live Quiz, Soft
+          Skills). Sab aapke school ke brand ke saath. Students app use karte hain, aap control me rehte hain.
         </p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => { window.location.href = 'mailto:sales@examai.app?subject=School%20Pilot%20Request&body=School%20name%3A%20%0ACity%3A%20%0AStudents%20(approx)%3A%20%0APhone%3A%20' }}>
+          <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => { window.location.href = `mailto:${brand.supportEmail || 'sales@aisepadho.com'}?subject=School%20Pilot%20Request&body=School%20name%3A%20%0ACity%3A%20%0AStudents%20(approx)%3A%20%0APhone%3A%20` }}>
             Book a free pilot
           </button>
           <button className="btn btn-ghost" style={{ padding: '13px 26px' }} onClick={() => nav('/register')}>Try the student app first</button>
@@ -95,6 +116,22 @@ export default function Schools() {
           ))}
         </div>
 
+        <h2 className="mb" style={{ textAlign: 'center' }}>🎓 Teachers ke liye bhi AI — <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Guru Studio</span></h2>
+        <p className="small muted mb" style={{ textAlign: 'center' }}>Sirf students nahi — aapke teachers ko bhi platform me AI milta hai. Teaching quality, class engagement aur personality development — sab andar.</p>
+        <div className="grid grid-2 mb">
+          {GURU.map((g) => (
+            <div key={g.title} className="card" style={{ borderColor: 'rgba(99,102,241,0.4)' }}>
+              <div className="row mb">
+                <span style={{ fontSize: 28 }}>{g.icon}</span>
+                <b>{g.title}</b>
+              </div>
+              <ul className="small muted" style={{ paddingLeft: 18, lineHeight: 2 }}>
+                {g.points.map((pt) => <li key={pt}>{pt}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+
         <h2 className="mb" style={{ textAlign: 'center' }}>Shuru kaise hota hai</h2>
         <div className="grid grid-4 mb">
           {STEPS.map((s) => (
@@ -115,7 +152,7 @@ export default function Schools() {
                 Coaching institutes: ₹5k–25k / month. Pilot ke dauran <b>₹0</b>.
               </p>
             </div>
-            <button className="btn btn-accent" onClick={() => { window.location.href = 'mailto:sales@examai.app?subject=School%20Pilot%20Request' }}>
+            <button className="btn btn-accent" onClick={() => { window.location.href = `mailto:${brand.supportEmail || 'sales@aisepadho.com'}?subject=School%20Pilot%20Request` }}>
               Request pilot →
             </button>
           </div>
@@ -139,6 +176,10 @@ export default function Schools() {
             <div>
               <b className="small">🇮🇳 Hindi me bhi?</b>
               <p className="tiny muted">Haan — doubts Hindi/Hinglish me pooche ja sakte hain (voice bhi).</p>
+            </div>
+            <div>
+              <b className="small">🎓 Teachers ke liye bhi kuch hai?</b>
+              <p className="tiny muted">Haan — Guru Studio: AI Teach Kits, Kahoot-style Classroom Live Quiz aur Soft Skills (GD, speech, personality report). Teachers ko sirf PDF upload aana chahiye — AI baaki karta hai.</p>
             </div>
           </div>
         </div>

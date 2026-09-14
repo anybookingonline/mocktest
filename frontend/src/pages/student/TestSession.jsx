@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client.js'
 import { Badge, useToast, fmtDuration, qTypeLabel, diffBadge } from '../../components/ui.jsx'
+import { useLang } from '../../context/LangContext.jsx'
 
 export default function TestSession() {
   const { id } = useParams()
@@ -28,6 +29,11 @@ export default function TestSession() {
   const [submitting, setSubmitting] = useState(false)
   const [confirmSubmit, setConfirmSubmit] = useState(false)
 
+  const { lang } = useLang()
+  // Ref copy so the AI explain callback always reads the current language
+  // without becoming a dependency of the memoized timer callbacks.
+  const langRef = useRef(lang)
+  useEffect(() => { langRef.current = lang }, [lang])
   const qStartRef = useRef(Date.now())
   const timeLimitRef = useRef(0)
   const answersRef = useRef([])
@@ -200,7 +206,7 @@ export default function TestSession() {
     if (!q) return
     setExplainBusy(true)
     try {
-      const d = await api.post('/ai/explain', { questionId: q.id })
+      const d = await api.post('/ai/explain', { questionId: q.id, language: langRef.current })
       setShowExpl(d.explanation)
     } catch (e) { setShowExpl(q.explanation || 'No explanation available.') } finally { setExplainBusy(false) }
   }
