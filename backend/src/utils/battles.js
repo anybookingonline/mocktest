@@ -230,7 +230,11 @@ export async function roomState({ roomId, userId }) {
     WHERE b.id = ?`).get(Number(roomId))
   if (!room) return null
   const isPlayer = Number(room.player1_id) === Number(userId) || Number(room.player2_id) === Number(userId)
-  if (!isPlayer && room.status === 'waiting') return { forbidden: true }
+  // Hard scope: ONLY the two players may poll a room's state. Previously
+  // non-players were only blocked for 'waiting' rooms, which let any logged-in
+  // user read active rooms (question text, options, post-round correct
+  // answers, players' names/ELO) by enumerating room ids.
+  if (!isPlayer) return { forbidden: true }
 
   const rounds = await db.prepare(`SELECT br.*, q.question_text, q.options_json, q.correct_answer, q.difficulty
     FROM battle_rounds br JOIN questions q ON q.id = br.question_id

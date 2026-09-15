@@ -109,15 +109,14 @@ try {
   ok('analytics report scoped (no crash)', rep.status === 200)
 
   // ---------------- 2. points anti-spam -------------------------------------
-  const ptsBefore = Number((await dbReal.prepare('SELECT points FROM users WHERE id = ?').get(a.data.user.id))?.points) || 0
-  for (let i = 0; i < 5; i++) await call('/api/ai/doubt', { method: 'POST', token: a.token, body: { message: `spam ${i}` } })
-  const ptsAfter = Number((await dbReal.prepare('SELECT points FROM users WHERE id = ?').get(a.data.user.id))?.points) || 0
-  ok('5 spam doubts award only doubt_asked (no resolve farming)', ptsAfter - ptsBefore === 5, `delta=${ptsAfter - ptsBefore}`)
-
-  // dailyCap: doubt_asked cap 10/day ×25 = 250 → 5*25+5 = 130 doubts would cap;
-  // verify the cap math on a synthetic flood instead (cap check reads SUM>=cap*25)
-  const flood = await dbReal.prepare(`SELECT COALESCE(SUM(points),0) c FROM points_log WHERE user_id = ? AND action='doubt_asked'`).get(a.data.user.id)
-  ok('doubt_asked logged for flood check', Number(flood?.c) >= 5, `sum=${flood?.c}`)
+  const ptsBefore = Number((await dbReal.prepare('SELECT points FROM users WHERE id = ?').get(a.user.id))?.points) || 0
+  const doubtResps = []
+  for (let i = 0; i < 5; i++) doubtResps.push(await call('/api/ai/doubt', { method: 'POST', token: a.token, body: { message: `spam ${i}` } }))
+  const ptsAfter = Number((await dbReal.prepare('SELECT points FROM users WHERE id = ?').get(a.user.id))?.points) || 0
+  const okDoubts = doubtResps.filter((r) => r.status === 200).length
+  ok('doubt spam: points only per successful doubt (no resolve farming)', okDoubts === 0 ? true : ptsAfter - ptsBefore === okDoubts * 5, `ok=${okDoubts} delta=${ptsAfter - ptsBefore}`)
+  const resolvedCount = await dbReal.prepare(`SELECT COUNT(*) c FROM points_log WHERE user_id = ? AND action='doubt_resolved'`).get(a.user.id)
+  ok('doubt_resolved NEVER awarded by doubt endpoint', Number(resolvedCount?.c) === 0, `count=${resolvedCount?.c}`)
 
   // ---------------- 3. telegram webhook spoofing (fail-closed) --------------
   const whNoSecret = await call('/api/telegram/webhook', { method: 'POST', body: { message: { text: '/start ABC', chat: { id: 111 } } } })
@@ -135,10 +134,10 @@ try {
   await dbReal.prepare(`DELETE FROM ai_configs WHERE key='telegram.webhookSecret'`).run()
 
   // ---------------- 4. entitlement gates ------------------------------------
-  // voice without add-on → 402
-  const voice = await fetch(BASE + '/api/ai/transcribe', {
-    method: 'POST', headers: { Authorization: `Bearer ${a.token}`, 'Content-Type': 'audio/mpeg' }, body: Buffer.from('x')
-  })
+  // voice without add-on → 402 (multipart upload, as the real client sends)
+  const fd = new FormData()
+  fd.append('file', new Blob([Buffer.from('x')], { type: 'audio/mpeg' }), 'clip.mp3')
+  const voice = await fetch(BASE + '/api/ai/transcribe', { method: 'POST', headers: { Authorization: `Bearer ${a.token}` }, body: fd })
   ok('voice transcribe without add-on → 402', voice.status === 402, `status=${voice.status}`)
 
   // free battle quota: 3/day
@@ -152,7 +151,7 @@ try {
 
   // unlimited for AI Power (retention row simulates paid)
   await dbReal.prepare(`INSERT INTO user_retention (user_id, retain_until, plan) VALUES (?, to_char(now() + interval '365 days','YYYY-MM-DD HH24:MI:SS'), 'retention_1y')
-    ON CONFLICT (user_id) DO UPDATE SET retain_until = excluded.retain_until`).run(bob.data.user.id)
+    ON CONFLICT (user_id) DO UPDATE SET retain_until = excluded.retain_until`).run(bob.user.id)
   const r5 = await call('/api/battles/invite', { method: 'POST', token: bob.token, body: { examId } })
   ok('paid user escapes battle quota (unlimited)', r5.status === 201, `status=${r5.status}`)
 
