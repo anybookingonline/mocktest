@@ -587,6 +587,35 @@ CREATE TABLE IF NOT EXISTS revision_state (
   streak INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, topic_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Coupons — social-media rollout codes. Grant retention or add-on days with
+-- per-code caps, per-user limits, expiry, and a source tag (instagram /
+-- telegram / youtube) so each campaign's signups are attributable.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS coupons (
+  id SERIAL PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'retention',  -- retention | addon
+  days INTEGER NOT NULL DEFAULT 365,
+  addon_id TEXT,
+  source TEXT DEFAULT '',
+  max_uses INTEGER NOT NULL DEFAULT 0,     -- 0 = unlimited
+  per_user_limit INTEGER NOT NULL DEFAULT 1,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_coupons_source ON coupons(source);
+
+CREATE TABLE IF NOT EXISTS coupon_redemptions (
+  id SERIAL PRIMARY KEY,
+  coupon_id INTEGER NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_user ON coupon_redemptions(user_id);
 `
 
 export async function initSchema() {

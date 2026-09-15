@@ -52,6 +52,7 @@ hoti hain, repo me kabhi nahi.
 4. **Users** → naye signups me suspicious emails? (spam accounts block)
 
 ### Hafte ka check (Sunday, 15 min)
+- **🎟️ Coupons (Rollout)** → source-wise table dekho: kaunsa campaign (Instagram/Telegram/YouTube) sabse zyada unique users la raha hai — agla content/budget wahi. Expired codes cleanup. (`docs/vps-rollout.md` §3 me campaign playbook)
 - **Analytics & Reports** → weekly activity, top exams, weak questions
 - **Institutes** → B2B clients ke stats dekho, inactive institute ko call karo
 - **AI cache** → hit-rate dekho (low hit-rate = cost badh raha hai)

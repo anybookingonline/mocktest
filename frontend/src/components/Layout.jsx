@@ -46,6 +46,7 @@ const ADMIN_NAV = [
   { to: '/admin/users', label: 'Users', icon: '👥' },
   { to: '/admin/reports', label: 'Analytics & Reports', icon: '📈' },
   { to: '/admin/payments', label: 'Payments & Retention', icon: '💳', group: 'System' },
+  { to: '/admin/coupons', label: '🎟️ Coupons (Rollout)' },
   { to: '/admin/institutes', label: '🏫 Institutes (B2B)' },
   { to: '/admin/settings', label: 'Settings', icon: '⚙️' }
 ]

@@ -17,6 +17,8 @@ export default function Retention() {
   const [txnRef, setTxnRef] = useState('')
   const [payerName, setPayerName] = useState('')
   const [proofFile, setProofFile] = useState(null)
+  const [couponCode, setCouponCode] = useState('')
+  const [couponBusy, setCouponBusy] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -148,6 +150,21 @@ export default function Retention() {
     } catch (e) { toast(e.message, 'err') }
   }
 
+  // 🎟️ Coupon redemption — social-media rollout codes
+  const redeemCouponCode = async () => {
+    const code = couponCode.trim()
+    if (!code || couponBusy) return
+    setCouponBusy(true)
+    try {
+      const r = await api.post('/coupons/redeem', { code })
+      const label = r.kind === 'addon' ? 'Add-on activated' : `${r.kind === 'retention' ? 'Pro plan extended' : 'Activated'}`
+      toast(`🎉 Coupon ${r.code} applied — ${label}!`, 'ok')
+      setCouponCode('')
+      reload()
+    } catch (e) { toast(e.message, 'err') }
+    setCouponBusy(false)
+  }
+
   const GatewayPicker = () => (
     gateways.length > 1 && (
       <div className="row mb" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -214,6 +231,24 @@ export default function Retention() {
           <p className="tiny">Free accounts: your test history, results, doubts and bookmarks are auto-deleted after 24 hours, and AI features have daily caps. Get the plan that fits — one-time payments, no auto-renew.</p>
         </div>
         <Badge kind={active ? 'green' : 'red'}>{active ? 'Retention active' : 'Free plan'}</Badge>
+      </div>
+
+      {/* ------------------------------ Coupon ------------------------------ */}
+      <div className="card mb">
+        <div className="spread mb">
+          <b className="small">🎟️ Coupon / Promo code</b>
+          <span className="tiny muted">Social media par mila code yahan lagao — free</span>
+        </div>
+        <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <input className="input" style={{ flex: 1, minWidth: 200, textTransform: 'uppercase', letterSpacing: 1 }}
+            placeholder="INSTA500" value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') redeemCouponCode() }} />
+          <button className="btn btn-accent" onClick={redeemCouponCode} disabled={couponBusy || !couponCode.trim()}>
+            {couponBusy ? 'Applying…' : 'Apply'}
+          </button>
+        </div>
+        <p className="tiny muted mt">Coupon se mili days aapke plan ke <b>upar extend</b> hoti hain — kuch replace nahi hota.</p>
       </div>
 
       {qrOrder && (
