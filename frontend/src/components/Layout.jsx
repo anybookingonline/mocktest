@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { BrandLogo } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import { api } from '../api/client.js'
+import Tour from './Tour.jsx'
 
 const STUDENT_NAV = [
   { to: '/', label: 'nav.dashboard', icon: '📊', group: 'Learn' },
@@ -90,7 +91,9 @@ function SideNav({ nav, active, onNavigate }) {
   )
 }
 
-export function AppShell({ nav, title, children, footer, onTitle }) {
+export function AppShell({ nav, title, children, footer, onTitle, role = 'student' }) {
+  const [tour, setTour] = useState(false)
+  const [tourForce, setTourForce] = useState(false)
   const { user, logout } = useAuth()
   const { t } = useLang()
   const navigate = useNavigate()
@@ -124,6 +127,8 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
           <button className="burger" onClick={() => setOpen(true)}>☰</button>
           <h1>{typeof title === 'function' ? title() : title}</h1>
           <div className="spacer" />
+          <button className="btn btn-ghost btn-sm" title="Platform guide — kaise chalao?"
+            onClick={() => { setTourForce(true); setTour(true) }}>?</button>
           <LangSwitcher compact />
           <div className="user-chip">
             {user?.role !== 'admin' && pts && (
@@ -140,6 +145,7 @@ export function AppShell({ nav, title, children, footer, onTitle }) {
         </div>
         <div className="content">{children}</div>
       </div>
+      <Tour role={role} autoOpen force={tourForce} onClose={() => { setTour(false); setTourForce(false) }} />
     </div>
   )
 }
@@ -154,7 +160,7 @@ export function StudentLayout({ title, children }) {
     if (i.to === '/current-affairs') return Boolean(flags.currentAffairs)
     return true
   })
-  return <AppShell nav={nav} title={title}>{children}</AppShell>
+  return <AppShell nav={nav} title={title} role="student">{children}</AppShell>
 }
 
 export function AdminLayout({ title, children }) {
@@ -164,5 +170,5 @@ export function AdminLayout({ title, children }) {
   const nav = user?.institute_id
     ? ADMIN_NAV.filter((i) => i.to === '/admin/institute')
     : ADMIN_NAV.filter((i) => i.to !== '/admin/institute')
-  return <AppShell nav={nav} title={title}>{children}</AppShell>
+  return <AppShell nav={nav} title={title} role="admin">{children}</AppShell>
 }

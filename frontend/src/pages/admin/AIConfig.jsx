@@ -220,22 +220,67 @@ export default function AdminAI() {
         {(cfg['features.groupStudy'] === 'true' || cfg['features.groupDiscussions'] === 'true') && (
           <>
             <hr className="divider" />
-            <b className="small mb" style={{ display: 'block' }}>👥 Group deal — "N paying members → M free seats"</b>
+            <b className="small mb" style={{ display: 'block' }}>🎁 Free-seat deal builder — "kitne paid → kitne free"</b>
+            <p className="tiny muted mb">Jo rule yahan set karoge wahi har group par apply hoga. Koi code/JSON nahi — ready-made deals choose karo ya numbers badlo. Save configuration dabana mat bhoolna.</p>
+            <div className="row mb" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { label: '2 paid → 1 free (default)', n: 2, m: 1 },
+                { label: '"4 ka group, 1 free"', n: 3, m: 1 },
+                { label: '3 paid → 2 free', n: 3, m: 2 },
+                { label: 'Sirf paid (0 free)', n: 2, m: 0 }
+              ].map((p) => (
+                <button key={p.label} type="button" className="btn btn-ghost btn-sm"
+                  style={{
+                    borderColor: 'rgba(99,102,241,0.4)',
+                    background: (Number(cfg['groups.freeAfterPaid']) || 2) === p.n && (Number(cfg['groups.freeSlots']) || 0) === p.m ? 'rgba(99,102,241,0.18)' : 'transparent'
+                  }}
+                  onClick={() => { set('groups.freeAfterPaid', String(p.n)); set('groups.freeSlots', String(p.m)) }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="card mb" style={{ padding: '14px 16px', borderColor: 'rgba(99,102,241,0.4)' }}>
+              <p className="small" style={{ lineHeight: 2.2, margin: 0 }}>
+                📜 Rule: jab kisi group me{' '}
+                <input type="number" min="1" className="input" style={{ display: 'inline-block', width: 64, padding: '4px 8px' }} value={cfg['groups.freeAfterPaid'] || 2} onChange={(e) => set('groups.freeAfterPaid', e.target.value)} />
+                {' '}paying members ho jayein, tab{' '}
+                <input type="number" min="0" className="input" style={{ display: 'inline-block', width: 64, padding: '4px 8px' }} value={cfg['groups.freeSlots'] || 1} onChange={(e) => set('groups.freeSlots', e.target.value)} />
+                {' '}member ko us group ki chat <b style={{ color: 'var(--green, #22c55e)' }}>FREE</b> mil jayegi.
+              </p>
+              <p className="tiny muted" style={{ marginTop: 8 }}>
+                {Number(cfg['groups.freeSlots'] || 1) === 0
+                  ? 'ℹ️ Abhi free seats OFF hain — sirf paying/addon members hi group chat me likh payenge.'
+                  : `✅ Matlab: har ${Number(cfg['groups.freeAfterPaid']) || 2} paying members ${Number(cfg['groups.freeSlots']) || 1} dost ka chat seat unlock karte hain — per group max ${cfg['groups.maxFree'] || 3} free seats.`}
+              </p>
+            </div>
             <div className="field-row">
-              <label className="field"><span>Paying members needed (N)</span>
-                <input type="number" min="1" className="input" value={cfg['groups.freeAfterPaid'] || 2} onChange={(e) => set('groups.freeAfterPaid', e.target.value)} />
-              </label>
-              <label className="field"><span>Free seats per deal (M)</span>
-                <input type="number" min="0" className="input" value={cfg['groups.freeSlots'] || 1} onChange={(e) => set('groups.freeSlots', e.target.value)} />
-              </label>
-              <label className="field"><span>Max free seats (cap)</span>
+              <label className="field"><span>Max free seats per group (cap)</span>
                 <input type="number" min="0" className="input" value={cfg['groups.maxFree'] || 3} onChange={(e) => set('groups.maxFree', e.target.value)} />
               </label>
               <label className="field"><span>Max members per group</span>
                 <input type="number" min="2" className="input" value={cfg['groups.maxMembers'] || 20} onChange={(e) => set('groups.maxMembers', e.target.value)} />
               </label>
             </div>
-            <p className="tiny muted">Default deal: 2 paying members → 1 free seat (cap 3). "4 ka group, 1 free" chahiye to N=3, M=1 set karo. Free seats group Discussions chat unlock karte hain (45 din ki validity, auto-extend). Group Study bina chat ke free hai — 0 infra cost.</p>
+            <div className="field-row">
+              <label className="field"><span>Free user kitne group bana sakta hai</span>
+                <input type="number" min="0" className="input" value={cfg['groups.groupsFreeForFree'] || 1} onChange={(e) => set('groups.groupsFreeForFree', e.target.value)} />
+              </label>
+              <label className="field"><span>Paid user kitne group bana sakta hai</span>
+                <input type="number" min="1" className="input" value={cfg['groups.groupsFreeForPaid'] || 3} onChange={(e) => set('groups.groupsFreeForPaid', e.target.value)} />
+              </label>
+              <label className="field"><span>Free seat validity (din)</span>
+                <input type="number" min="7" className="input" value={cfg['groups.freeSeatDays'] || 45} onChange={(e) => set('groups.freeSeatDays', e.target.value)} />
+              </label>
+            </div>
+            <div className="card muted-bg" style={{ border: 'none', padding: '12px 16px' }}>
+              <b className="small">Free-seat member ko kya milta hai (jawaab: bahut limited)</b>
+              <ul className="tiny muted" style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.9 }}>
+                <li>✅ Sirf <b>usi group ki chat</b> — padhna aur likhna</li>
+                <li>❌ Baaki premium features NAHI — AI Power Pack, Voice Doubts, unlimited battles paid hi rahenge</li>
+                <li>⏳ Seat {cfg['groups.freeSeatDays'] || 45} din valid — deal active rehne par auto-extend</li>
+                <li>👀 Group Study (bina chat) sabke liye free hai — ye seat sirf Discussions chat ke liye</li>
+              </ul>
+            </div>
           </>
         )}
         <div className="field-row">
