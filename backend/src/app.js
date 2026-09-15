@@ -46,6 +46,7 @@ import battleRoutes from './routes/battles.js'
 import caRoutes from './routes/currentAffairs.js'
 import instituteRoutes from './routes/institutes.js'
 import couponRoutes from './routes/coupons.js'
+import marketingRoutes, { chatRouter as marketingChatRoutes } from './routes/marketing.js'
 import { purgeExpiredData } from './utils/retention.js'
 
 const app = express()
@@ -99,6 +100,9 @@ app.use('/api/battles', battleRoutes)
 app.use('/api/ca', caRoutes)
 app.use('/api/institutes', instituteRoutes)
 app.use('/api/coupons', couponRoutes)
+// Public chat first, then the admin-guarded marketing router (same prefix).
+app.use('/api/marketing', marketingChatRoutes)
+app.use('/api/marketing', marketingRoutes)
 
 // Serve the built frontend (single-origin deployment: one service hosts API + UI)
 const distDir = path.join(__dirname, '..', '..', 'dist')

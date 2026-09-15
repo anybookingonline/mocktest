@@ -59,6 +59,10 @@ platformAdmin.get('/institutes', async (_req, res) => {
 platformAdmin.post('/institutes', async (req, res) => {
   const out = await createInstitute({ name: req.body?.name, contactEmail: req.body?.contactEmail, planDays: req.body?.planDays, kind: req.body?.kind })
   if (out.error) return res.status(400).json(out)
+  // Optional pilot cost guardrail set at creation time (0 = unlimited)
+  if (req.body?.aiDailyQuota != null && Number(req.body.aiDailyQuota) > 0) {
+    await db.prepare('UPDATE institutes SET ai_daily_quota = ? WHERE id = ?').run(Number(req.body.aiDailyQuota), Number(out.instituteId))
+  }
   res.status(201).json(out)
 })
 
@@ -96,6 +100,13 @@ platformAdmin.post('/institutes/:id/subadmin', async (req, res) => {
 
 platformAdmin.get('/institutes/:id/students', async (req, res) => {
   res.json({ students: await instituteStudents(req.params.id) })
+})
+
+// PUT per-institute daily AI quota (0 = unlimited) — pilot loss guardrail
+platformAdmin.put('/institutes/:id/ai-quota', async (req, res) => {
+  const quota = Math.max(0, Number(req.body?.aiDailyQuota) || 0)
+  await db.prepare('UPDATE institutes SET ai_daily_quota = ? WHERE id = ?').run(quota, Number(req.params.id))
+  res.json({ ok: true, ai_daily_quota: quota })
 })
 
 platformAdmin.get('/institutes/:id/stats', async (req, res) => {
@@ -171,6 +182,10 @@ me.put('/branding', async (req, res) => {
   delete patch.plan_until
   delete patch.status
   delete patch.custom_domain
+  // ai_daily_quota is the platform's cost guardrail — only the platform admin
+  // (PUT /admin/institutes/:id/ai-quota) may change it. Otherwise a sub-admin
+  // could silently lift their own pilot quota to unlimited.
+  delete patch.ai_daily_quota
   const out = await updateInstitute(req.instituteId, patch)
   if (out.error) return res.status(400).json(out)
   res.json(out)

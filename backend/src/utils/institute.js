@@ -60,7 +60,7 @@ export async function createInstitute({ name, contactEmail, planDays = 30, kind 
 
 export async function updateInstitute(id, patch = {}) {
   const allowed = ['name', 'contact_email', 'kind', 'plan', 'plan_until', 'platform_name', 'tagline',
-    'primary_color', 'accent_color', 'logo_url', 'custom_domain', 'status']
+    'primary_color', 'accent_color', 'logo_url', 'custom_domain', 'status', 'ai_daily_quota']
   const sets = []
   const vals = []
   for (const [k, v] of Object.entries(patch)) {
@@ -72,6 +72,29 @@ export async function updateInstitute(id, patch = {}) {
   if (!sets.length) return { error: 'Nothing to update' }
   await db.prepare(`UPDATE institutes SET ${sets.join(', ')} WHERE id = ?`).run(...vals, Number(id))
   return getInstitute(id)
+}
+
+// Per-institute daily AI quota check — the pilot-loss guardrail (docs/pricing-audit.md).
+// Counts all AI doubts across the institute's students today; when the quota
+// (institutes.ai_daily_quota, 0 = unlimited) is exhausted the AI endpoints
+// respond 429 with a clear message instead of burning money silently.
+export async function checkInstituteAiQuota(userId) {
+  try {
+    if (!userId) return { ok: true }
+    const u = await db.prepare('SELECT institute_id FROM users WHERE id = ?').get(Number(userId))
+    if (!u?.institute_id) return { ok: true }
+    const inst = await db.prepare('SELECT ai_daily_quota FROM institutes WHERE id = ?').get(Number(u.institute_id))
+    const quota = Number(inst?.ai_daily_quota) || 0
+    if (quota <= 0) return { ok: true }
+    const used = await db.prepare('SELECT COUNT(*) c FROM doubts d JOIN users u ON u.id = d.user_id WHERE u.institute_id = ? AND d.created_at::date = current_date').get(Number(u.institute_id))
+    if (Number(used?.c) >= quota) {
+      return { ok: false, quota, used: Number(used?.c) }
+    }
+    return { ok: true, quota, used: Number(used?.c) }
+  } catch {
+    // Fail open on any unexpected error — a quota bug must never break doubts.
+    return { ok: true }
+  }
 }
 
 export async function getInstitute(id) {
@@ -201,6 +224,7 @@ export async function instituteStats(instituteId) {
     activeLast7: Number(active7?.c) || 0,
     testsCompleted: Number(tests?.c) || 0,
     avgAccuracy: Math.round(Number(avg?.c) || 0),
+    ai_daily_quota: Number((await s('SELECT ai_daily_quota FROM institutes WHERE id = ?', Number(instituteId)))?.ai_daily_quota) || 0,
     weakTopics: weak
       .map((w) => ({ ...w, accuracy: w.attempts ? Math.round((w.correct / w.attempts) * 100) : 0 }))
       .sort((a, b) => a.accuracy - b.accuracy)

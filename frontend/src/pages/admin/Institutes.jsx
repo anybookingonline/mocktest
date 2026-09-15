@@ -15,7 +15,9 @@ export default function AdminInstitutes() {
   const [createModal, setCreateModal] = useState(false)
   const [subModal, setSubModal] = useState(false)
   const [csvModal, setCsvModal] = useState(false)
-  const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30, kind: 'coaching' })
+  const [quotaVal, setQuotaVal] = useState('0')
+  const [quotaSaving, setQuotaSaving] = useState(false)
+  const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30, kind: 'coaching', aiDailyQuota: 0 })
   const [subForm, setSubForm] = useState({ name: '', email: '', password: '' })
   const [subCreds, setSubCreds] = useState(null)
   const [csv, setCsv] = useState('')
@@ -34,6 +36,7 @@ export default function AdminInstitutes() {
       setSelected({ institute: { ...inst, ...me }, stats: me, })
       setStudents(st.students || [])
       setInvites(inv.invites || [])
+      setQuotaVal(String(me.ai_daily_quota ?? 0))
     } catch (e) { toast(e.message, 'err') }
   }
 
@@ -44,7 +47,7 @@ export default function AdminInstitutes() {
       const d = await api.post('/institutes/admin/institutes', form)
       toast(`Institute created — code ${d.code}`, 'ok')
       setCreateModal(false)
-      setForm({ name: '', contactEmail: '', planDays: 30, kind: 'coaching' })
+      setForm({ name: '', contactEmail: '', planDays: 30, kind: 'coaching', aiDailyQuota: 0 })
       load()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
@@ -75,6 +78,15 @@ export default function AdminInstitutes() {
       toast(`Invite code: ${d.code}`, 'ok')
       open(selected.institute)
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  const saveQuota = async () => {
+    setQuotaSaving(true)
+    try {
+      await api.put(`/institutes/admin/institutes/${selected.institute.id}/ai-quota`, { aiDailyQuota: Number(quotaVal) || 0 })
+      toast(Number(quotaVal) > 0 ? `AI quota saved — ${quotaVal} doubts/day (institute-wide)` : 'AI quota removed — unlimited', 'ok')
+      open(selected.institute)
+    } catch (e) { toast(e.message, 'err') } finally { setQuotaSaving(false) }
   }
 
   const uploadCsv = async () => {
@@ -128,6 +140,23 @@ export default function AdminInstitutes() {
             <div className="stat card"><span className="label">Active (7d)</span><span className="value">{selected.stats.activeLast7}</span></div>
             <div className="stat card"><span className="label">Tests completed</span><span className="value">{selected.stats.testsCompleted}</span></div>
             <div className="stat card"><span className="label">Avg accuracy</span><span className="value">{selected.stats.avgAccuracy}%</span></div>
+          </div>
+
+          <div className="card mb">
+            <div className="spread">
+              <div>
+                <b>🛡️ Daily AI quota (pilot loss guardrail)</b>
+                <p className="tiny muted" style={{ marginTop: 4, maxWidth: 520 }}>
+                  Is institute ke saare students aaj ke din total itne AI doubts kar sakte hain.
+                  Pilot/free month me quota ON rakho — worst-case AI bill kabhi cap se aage nahi jayega.
+                  Paid plan par 0 = unlimited.
+                </p>
+              </div>
+              <div className="row">
+                <input type="number" min="0" className="input" style={{ width: 110 }} value={quotaVal} onChange={(e) => setQuotaVal(e.target.value)} />
+                <button className="btn btn-ghost btn-sm" onClick={saveQuota} disabled={quotaSaving}>{quotaSaving ? 'Saving…' : 'Save quota'}</button>
+              </div>
+            </div>
           </div>
 
           <div className="card mb">
@@ -220,6 +249,7 @@ export default function AdminInstitutes() {
         </label>
         <label className="field"><span>Contact email</span><input className="input" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} placeholder="owner@sunrise.com" /></label>
         <label className="field"><span>Trial days</span><input type="number" className="input" value={form.planDays} onChange={(e) => setForm({ ...form, planDays: e.target.value })} /></label>
+        <label className="field"><span>Daily AI quota (0 = unlimited) — pilot ke dauran recommend: students × 15</span><input type="number" min="0" className="input" value={form.aiDailyQuota} onChange={(e) => setForm({ ...form, aiDailyQuota: e.target.value })} placeholder="0" /></label>
       </Modal>
 
       <Modal open={subModal} onClose={() => { setSubModal(false); setSubCreds(null) }} title="👤 Institute Sub-Admin"

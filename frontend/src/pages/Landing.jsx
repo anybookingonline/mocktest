@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
+import SalesChat from '../components/SalesChat.jsx'
 
 const EXAMS = [
   { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', noteKey: 'ex.jee' },
@@ -162,6 +163,8 @@ export default function Landing() {
           </div>
         </div>
       </div>
+      {/* Public sales-support widget — AI-led lead capture + FAQ */}
+      <SalesChat />
     </div>
   )
 }

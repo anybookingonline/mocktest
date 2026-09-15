@@ -225,6 +225,7 @@ export default function AdminAI() {
             <div className="row mb" style={{ gap: 8, flexWrap: 'wrap' }}>
               {[
                 { label: '2 paid → 1 free (default)', n: 2, m: 1 },
+                { label: '🚀 Launch: 1 paid → 1 free', n: 1, m: 1 },
                 { label: '"4 ka group, 1 free"', n: 3, m: 1 },
                 { label: '3 paid → 2 free', n: 3, m: 2 },
                 { label: 'Sirf paid (0 free)', n: 2, m: 0 }

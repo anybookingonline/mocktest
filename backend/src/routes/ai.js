@@ -8,6 +8,7 @@ import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRES
 import { getEntitlements } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
 import { getContextualAd, publicAdFields } from '../utils/monetize.js'
+import { checkInstituteAiQuota } from '../utils/institute.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -38,6 +39,31 @@ router.get('/features', async (req, res) => {
 router.post('/doubt', aiLimiter(), async (req, res) => {
   const { questionId, questionText, message } = req.body || {}
   if (!message) return res.status(400).json({ error: 'message required' })
+  // Pilot loss guardrail: per-institute daily AI quota (all students combined).
+  // Applies before per-user entitlement checks so a free-month pilot can never
+  // run an unbounded AI bill (docs/pricing-audit.md §3).
+  const instQuota = await checkInstituteAiQuota(req.user.id)
+  if (!instQuota.ok) {
+    return res.status(429).json({
+      error: `Aaj aapke institute ka AI quota (${instQuota.quota} doubts) khatam ho gaya hai — kal subah phir try karo.`,
+      quota: instQuota.quota,
+      used: instQuota.used
+    })
+  }
+  // Unit-economics guard: paid (AI Power / retention) users keep unlimited
+  // doubts; free users get a daily cap. Without this, every free account
+  // costs real AI money with zero revenue attached (see docs/pricing-audit.md).
+  const entGuard = await getEntitlements(req.user.id)
+  if (!entGuard.aiPower && !entGuard.retention) {
+    const freeCap = Number(await getConfig('monetization.freeDoubtsPerDay', '15')) || 15
+    const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
+    if (Number(used?.c) >= freeCap) {
+      return res.status(402).json({
+        error: `Aaj ke ${freeCap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo unlimited doubts ke liye.`,
+        upgrade: 'ai_power'
+      })
+    }
+  }
   let q = null
   if (questionId) q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
   try {

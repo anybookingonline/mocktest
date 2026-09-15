@@ -465,6 +465,9 @@ ALTER TABLE institutes ADD COLUMN IF NOT EXISTS primary_color TEXT;
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS accent_color TEXT;
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS custom_domain TEXT;
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+-- Per-institute daily AI quota (pilot loss guarantee): max AI doubts across ALL
+-- students of the institute per day. 0 = unlimited (default for paid plans).
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS ai_daily_quota INTEGER DEFAULT 0;
 
 -- Institute invite codes: students register with the code and are auto-linked
 -- to the institute (sub-admin = users row with role='admin' + institute_id).

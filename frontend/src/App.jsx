@@ -36,6 +36,7 @@ import AdminReports from './pages/admin/Reports.jsx'
 import AdminSettings from './pages/admin/Settings.jsx'
 import AdminPayments from './pages/admin/Payments.jsx'
 import AdminCoupons from './pages/admin/Coupons.jsx'
+import AdminMarketing from './pages/admin/Marketing.jsx'
 import AdminInstitutes from './pages/admin/Institutes.jsx'
 import InstituteDashboard from './pages/admin/InstituteDashboard.jsx'
 
@@ -92,6 +93,7 @@ export default function App() {
         <Route path="/admin/settings" element={<Protected admin><AdminSettings /></Protected>} />
         <Route path="/admin/payments" element={<Protected admin><AdminPayments /></Protected>} />
         <Route path="/admin/coupons" element={<Protected admin><AdminCoupons /></Protected>} />
+        <Route path="/admin/marketing" element={<Protected admin><AdminMarketing /></Protected>} />
         <Route path="/admin/institutes" element={<Protected admin><AdminInstitutes /></Protected>} />
         <Route path="/admin/institute" element={<Protected admin><InstituteDashboard /></Protected>} />
 
