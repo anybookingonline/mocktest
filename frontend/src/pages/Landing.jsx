@@ -5,45 +5,45 @@ import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 
 const EXAMS = [
-  { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', note: 'Engineering' },
-  { code: 'NEET', icon: '🧬', label: 'NEET UG', note: 'Medical' },
-  { code: 'UPSC-CSE', icon: '🏛️', label: 'UPSC CSE', note: 'Civil Services' },
-  { code: 'SSC-CGL', icon: '📚', label: 'SSC CGL', note: 'Staff Selection' },
-  { code: 'BANK-PO', icon: '🏦', label: 'Banking PO', note: 'IBPS / SBI' },
-  { code: 'CAT', icon: '🐱', label: 'CAT', note: 'MBA Entrance' },
-  { code: 'GATE', icon: '🔧', label: 'GATE', note: 'Engineering PG' },
-  { code: 'CUET', icon: '🎓', label: 'CUET UG', note: 'University Entrance' }
+  { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', noteKey: 'ex.jee' },
+  { code: 'NEET', icon: '🧬', label: 'NEET UG', noteKey: 'ex.neet' },
+  { code: 'UPSC-CSE', icon: '🏛️', label: 'UPSC CSE', noteKey: 'ex.upsc' },
+  { code: 'SSC-CGL', icon: '📚', label: 'SSC CGL', noteKey: 'ex.ssc' },
+  { code: 'BANK-PO', icon: '🏦', label: 'Banking PO', noteKey: 'ex.bank' },
+  { code: 'CAT', icon: '🐱', label: 'CAT', noteKey: 'ex.cat' },
+  { code: 'GATE', icon: '🔧', label: 'GATE', noteKey: 'ex.gate' },
+  { code: 'CUET', icon: '🎓', label: 'CUET UG', noteKey: 'ex.cuet' }
 ]
 
-// Core features (originals)
+// Core features (originals) — all copy lives in LangContext per language
 const FEATURES = [
-  { icon: '🤖', title: 'AI Question Bank', text: 'Unlimited AI-generated questions via DeepSeek with Gemini fallback — fresh sets every time.' },
-  { icon: '📄', title: 'Previous Year Papers', text: 'Admins upload any PDF — even scanned — and Gemini Vision extracts every question once, forever reusable.' },
-  { icon: '⏱️', title: 'Real Exam Simulation', text: 'Dynamic timer that recalibrates time-per-question live, with speed, pace, accuracy & completion predictions.' },
-  { icon: '💡', title: 'Instant Doubt Solving', text: 'Wrong answer? The test pauses and an AI tutor explains the solution before you continue.' },
-  { icon: '🧠', title: 'Adaptive Practice', text: 'Difficulty adjusts to your performance. Weak topics are auto-detected and targeted.' },
-  { icon: '📈', title: 'Deep Analytics', text: 'Chapter-wise accuracy, weak-topic analysis, personalized recommendations and rankings.' }
+  { icon: '🤖', titleKey: 'cf.qbank.t', textKey: 'cf.qbank.d' },
+  { icon: '📄', titleKey: 'cf.pyq.t', textKey: 'cf.pyq.d' },
+  { icon: '⏱️', titleKey: 'cf.sim.t', textKey: 'cf.sim.d' },
+  { icon: '💡', titleKey: 'cf.doubt.t', textKey: 'cf.doubt.d' },
+  { icon: '🧠', titleKey: 'cf.adaptive.t', textKey: 'cf.adaptive.d' },
+  { icon: '📈', titleKey: 'cf.analytics.t', textKey: 'cf.analytics.d' }
 ]
 
 // NEW — the engagement & social layer (Phase 4 highlights)
 const NEW_FEATURES = [
-  { icon: '⚔️', title: '1v1 Quiz Battles', text: 'Dost ko invite code bhejo ya quick-match khelo — 30-second rounds, speed bonus, aur ELO rating ladder. Har jeet par leaderboard me chamko.', tag: 'NEW' },
-  { icon: '👥', title: 'Group Study + Discussions', text: 'Apni squad banao, join-code se bulao, discuss karo. Deal bhi hai — 2 members plan lein to 1 dost ka seat FREE.', tag: 'NEW' },
-  { icon: '🔥', title: 'AI Focus Areas', text: 'Pichhle saalon ke papers ka data scan — kaunsa topic baar-baar poocha jata hai, last year kab aaya. Smart prioritization.', tag: 'NEW' },
-  { icon: '🔁', title: 'Spaced Revision', text: 'Bhoolne ka science: har topic apne box me, 1-3-7-14-30 din ke cycle par. "Aaj ye revise karo" roz ka plan + Telegram reminder.', tag: 'NEW' },
-  { icon: '🎯', title: 'Doubt → Practice Loop', text: 'Har solved doubt se AI 3 similar questions banata hai — turant practice test. Jo doubt aaya, wo pakka fix.', tag: 'NEW' },
-  { icon: '🇮🇳', title: 'All-India Rank + Points', text: 'AIR #? of thousands — percentile ke saath. Har action par points (test, battle, doubt, group), levels aur recognition wall.', tag: 'NEW' },
-  { icon: '📰', title: 'Current Affairs Pro', text: 'AI roz 10 MCQs banata hai — pichhle 7 din ki ASLI news se (real headlines, purani knowledge nahi), aapke target exam ke hisaab se. UPSC/Banking/SSC walon ka daily habit.', tag: 'NEW' },
-  { icon: '💬', title: 'Telegram Tutor', text: 'Doubts, revision reminders aur welcome messages — sab Telegram par. App kholne ki bhi zaroorat nahi, bot hi coach ban jata hai.', tag: 'NEW' },
-  { icon: '📲', title: 'Installable App (PWA)', text: 'Browser se ek tap me phone par install — home screen icon, fast loading, no Play Store wait. Jaise native app, update apne aap.', tag: 'NEW' }
+  { icon: '⚔️', titleKey: 'nf.battles.t', textKey: 'nf.battles.d', tag: 'NEW' },
+  { icon: '👥', titleKey: 'nf.groups.t', textKey: 'nf.groups.d', tag: 'NEW' },
+  { icon: '🔥', titleKey: 'nf.focus.t', textKey: 'nf.focus.d', tag: 'NEW' },
+  { icon: '🔁', titleKey: 'nf.revision.t', textKey: 'nf.revision.d', tag: 'NEW' },
+  { icon: '🎯', titleKey: 'nf.loop.t', textKey: 'nf.loop.d', tag: 'NEW' },
+  { icon: '🇮🇳', titleKey: 'nf.air.t', textKey: 'nf.air.d', tag: 'NEW' },
+  { icon: '📰', titleKey: 'nf.ca.t', textKey: 'nf.ca.d', tag: 'NEW' },
+  { icon: '💬', titleKey: 'nf.tg.t', textKey: 'nf.tg.d', tag: 'NEW' },
+  { icon: '📲', titleKey: 'nf.pwa.t', textKey: 'nf.pwa.d', tag: 'NEW' }
 ]
 
-// Power-ups — optional paid add-ons (pricing admin-controlled, isliye page par hardcoded nahi)
+// Power-ups — optional paid add-ons (pricing admin-controlled, so never hardcoded here)
 const POWERUPS = [
-  { icon: '⚡', title: 'AI Power Pack', text: 'AI generation ka full boost — unlimited fresh questions, priority generation, tougher sets jab ready ho.' },
-  { icon: '🎙️', title: 'Voice Doubts', text: 'Bolkar sawal poocho — Hindi/English voice input, AI bolke jawab de. Haath busy ho to bhi padhai chalti hai.' },
-  { icon: '📰', title: 'Current Affairs Pro', text: 'Daily 10 AI MCQs real news se — exam-scoped, aaj ke headlines par based.' },
-  { icon: '🔥', title: 'AI Focus Areas', text: 'Pichhle saalon ke papers scan — kaunsa topic baar-baar aata hai, wahi pehle master karo.' }
+  { icon: '⚡', titleKey: 'pu.power.t', textKey: 'pu.power.d' },
+  { icon: '🎙️', titleKey: 'pu.voice.t', textKey: 'pu.voice.d' },
+  { icon: '📰', titleKey: 'pu.ca.t', textKey: 'pu.ca.d' },
+  { icon: '🔥', titleKey: 'pu.focus.t', textKey: 'pu.focus.d' }
 ]
 
 export default function Landing() {
@@ -69,14 +69,14 @@ export default function Landing() {
 
       <div className="hero">
         <div className="pill mb">
-          {stats ? <span className="chip">{stats.questions}+ AI & PYQ questions ready</span> : null}
-          <span className="chip">8 exams supported</span>
-          <span className="chip">Battles, Groups & AIR rankings</span>
-          <span className="chip">Daily AI current affairs</span>
-          <span className="chip">Telegram tutor + installable app</span>
+          {stats ? <span className="chip">{stats.questions}+ {t('chip.qready')}</span> : null}
+          <span className="chip">{t('chip.exams')}</span>
+          <span className="chip">{t('chip.social')}</span>
+          <span className="chip">{t('chip.ca')}</span>
+          <span className="chip">{t('chip.tg')}</span>
         </div>
-        <h1>Master Every Exam with<br /><span>AI-Powered Practice</span></h1>
-        <p>{tagline}. Mock tests, adaptive learning, PYQ papers, real exam simulation — plus 1v1 battles, group study, spaced revision, daily current affairs from real news, a Telegram tutor and an All-India leaderboard that makes prep addictive.</p>
+        <h1>{t('hero.h1a')}<br /><span>{t('hero.h1b')}</span></h1>
+        <p>{tagline}. {t('hero.sub')}</p>
         <div className="row" style={{ justifyContent: 'center' }}>
           <button className="btn btn-primary" style={{ padding: '13px 26px' }} onClick={() => nav('/register')}>{t('cta.start')}</button>
           <button className="btn btn-ghost" style={{ padding: '13px 26px' }} onClick={() => nav('/schools')}>{t('cta.schools')}</button>
@@ -89,46 +89,46 @@ export default function Landing() {
             <div key={e.code} className="card hover" onClick={() => nav('/register')} style={{ cursor: 'pointer', textAlign: 'center' }}>
               <div style={{ fontSize: 30 }}>{e.icon}</div>
               <b style={{ display: 'block', marginTop: 6 }}>{e.label}</b>
-              <div className="tiny">{e.note}</div>
+              <div className="tiny">{t(e.noteKey)}</div>
             </div>
           ))}
         </div>
 
         {/* NEW features first — bigger cards with tag */}
-        <h2 className="mb" style={{ textAlign: 'center' }}>Ab sirf practice nahi — <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>competition, community aur consistency</span></h2>
+        <h2 className="mb" style={{ textAlign: 'center' }}>{t('hero.new')} <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t('sec.new.b')}</span></h2>
         <div className="grid grid-3 mb">
           {NEW_FEATURES.map((f) => (
-            <div key={f.title} className="card" style={{ borderColor: 'rgba(99,102,241,0.4)' }}>
+            <div key={f.titleKey} className="card" style={{ borderColor: 'rgba(99,102,241,0.4)' }}>
               <div className="spread mb" style={{ marginBottom: 8 }}>
                 <span style={{ fontSize: 26 }}>{f.icon}</span>
                 <span className="badge purple">{f.tag}</span>
               </div>
-              <b>{f.title}</b>
-              <p className="small muted" style={{ marginTop: 6 }}>{f.text}</p>
+              <b>{t(f.titleKey)}</b>
+              <p className="small muted" style={{ marginTop: 6 }}>{t(f.textKey)}</p>
             </div>
           ))}
         </div>
 
-        <h2 className="mb" style={{ textAlign: 'center' }}>Everything an aspirant needs</h2>
+        <h2 className="mb" style={{ textAlign: 'center' }}>{t('hero.core')}</h2>
         <div className="grid grid-3 mb">
           {FEATURES.map((f) => (
-            <div key={f.title} className="card">
+            <div key={f.titleKey} className="card">
               <div style={{ fontSize: 26, marginBottom: 8 }}>{f.icon}</div>
-              <b>{f.title}</b>
-              <p className="small muted" style={{ marginTop: 6 }}>{f.text}</p>
+              <b>{t(f.titleKey)}</b>
+              <p className="small muted" style={{ marginTop: 6 }}>{t(f.textKey)}</p>
             </div>
           ))}
         </div>
 
         {/* Power-ups — optional add-ons */}
-        <h2 className="mb" style={{ textAlign: 'center' }}>Jab basic master ho jaye — <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Power-ups unlock karo</span></h2>
-        <p className="small muted mb" style={{ textAlign: 'center' }}>Optional add-ons — free plan me poora core milta hai, power-ups unko aur tez karte hain.</p>
+        <h2 className="mb" style={{ textAlign: 'center' }}>{t('sec.power.a')} <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t('cta.powerups')}</span></h2>
+        <p className="small muted mb" style={{ textAlign: 'center' }}>{t('sec.power.sub')}</p>
         <div className="grid grid-4 mb">
           {POWERUPS.map((p) => (
-            <div key={p.title} className="card">
+            <div key={p.titleKey} className="card">
               <div style={{ fontSize: 24 }}>{p.icon}</div>
-              <b className="small" style={{ display: 'block', marginTop: 6 }}>{p.title}</b>
-              <p className="tiny muted" style={{ marginTop: 6 }}>{p.text}</p>
+              <b className="small" style={{ display: 'block', marginTop: 6 }}>{t(p.titleKey)}</b>
+              <p className="tiny muted" style={{ marginTop: 6 }}>{t(p.textKey)}</p>
             </div>
           ))}
         </div>
@@ -138,25 +138,25 @@ export default function Landing() {
           <div className="grid grid-3" style={{ textAlign: 'center', gap: 12 }}>
             <div>
               <div style={{ fontSize: 28 }}>⭐</div>
-              <b className="small">Points & Levels</b>
-              <p className="tiny muted">Har action par recognition — Newbie se Legend tak</p>
+              <b className="small">{t('sp.points.t')}</b>
+              <p className="tiny muted">{t('sp.points.d')}</p>
             </div>
             <div>
               <div style={{ fontSize: 28 }}>🏆</div>
-              <b className="small">Leaderboards</b>
-              <p className="tiny muted">AIR, exam rank aur ELO battle ladder</p>
+              <b className="small">{t('sp.lb.t')}</b>
+              <p className="tiny muted">{t('sp.lb.d')}</p>
             </div>
             <div>
               <div style={{ fontSize: 28 }}>🎁</div>
-              <b className="small">Group Deals</b>
-              <p className="tiny muted">Dosto ke saath plan lo — ek seat free</p>
+              <b className="small">{t('sp.deals.t')}</b>
+              <p className="tiny muted">{t('sp.deals.d')}</p>
             </div>
           </div>
         </div>
 
         <div className="card muted-bg mb" style={{ border: 'none', textAlign: 'center' }}>
-          <b>Run your school or coaching on {brand.platformName} — students aur teachers dono ke liye</b>
-          <p className="small muted mt">White-label AI test platform — your brand, your tests, AI for your teachers (Teach Kits, Classroom Live Quiz, Soft Skills) aur parent-ready progress reports. Free 30-day pilot.</p>
+          <b>{t('b2b.title').replace('{brand}', brand.platformName || 'Aisepadho')}</b>
+          <p className="small muted mt">{t('b2b.sub')}</p>
           <div className="row mt" style={{ justifyContent: 'center' }}>
             <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 {t('cta.guruline')}</button>
           </div>

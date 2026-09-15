@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, platformOnly } from '../middleware/auth.js'
 import { getEntitlements } from '../utils/addons.js'
 import { getOrCreateDailyQuiz } from '../utils/currentAffairs.js'
 
@@ -63,7 +63,7 @@ router.post('/attempt', async (req, res) => {
 })
 
 // GET /api/ca/admin/stats
-router.get('/admin/stats', authRequired, adminOnly, async (_req, res) => {
+router.get('/admin/stats', authRequired, platformOnly, async (_req, res) => {
   res.json(await (await import('../utils/currentAffairs.js')).caStats())
 })
 

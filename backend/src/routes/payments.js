@@ -5,7 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { loadMonetizationConfig, loadGatewayConfig, GATEWAYS, getRetentionStatus, activateRetention } from '../utils/retention.js'
 import { listPlans as listAddonPlans, ADDONS, activateAddon } from '../utils/addons.js'
 import { b2Configured, putFile } from '../utils/b2.js'
@@ -271,7 +271,7 @@ async function activateGroupPlan(pay) {
 }
 
 // GET /api/payments/admin/status - admin view of retention & payments
-router.get('/admin/status', authRequired, adminOnly, async (req, res) => {
+router.get('/admin/status', authRequired, platformOnly, async (req, res) => {
   const payments = await db.prepare(`SELECT p.id, u.email, p.amount, p.currency, p.plan, p.provider, p.txn_ref, p.payer_name, p.payment_proof, p.status, p.created_at
     FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.id DESC LIMIT 50`).all()
   const retentions = await db.prepare(`SELECT r.user_id, u.email, r.plan, r.retain_until, r.created_at
@@ -281,7 +281,7 @@ router.get('/admin/status', authRequired, adminOnly, async (req, res) => {
 })
 
 // POST /api/payments/admin/mark-paid - confirm a manual QR/UPI payment
-router.post('/admin/mark-paid', authRequired, adminOnly, async (req, res) => {
+router.post('/admin/mark-paid', authRequired, platformOnly, async (req, res) => {
   const { paymentId } = req.body || {}
   if (!paymentId) return res.status(400).json({ error: 'paymentId required' })
   const pay = await db.prepare('SELECT * FROM payments WHERE id = ? AND status = ?').get(paymentId, 'pending')
@@ -300,7 +300,7 @@ router.post('/admin/mark-paid', authRequired, adminOnly, async (req, res) => {
 })
 
 // POST /api/payments/admin/activate - manual activation (offline billing)
-router.post('/admin/activate', authRequired, adminOnly, async (req, res) => {
+router.post('/admin/activate', authRequired, platformOnly, async (req, res) => {
   const { email, days } = req.body || {}
   if (!email) return res.status(400).json({ error: 'email required' })
   const user = await db.prepare('SELECT id FROM users WHERE email = ?').get(String(email).toLowerCase())

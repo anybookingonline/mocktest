@@ -32,3 +32,15 @@ export function adminOnly(req, res, next) {
   }
   next()
 }
+
+// Platform-admin guard: role=admin AND no institute linked. Institute
+// sub-admins also carry role='admin' (they manage their own institute), so
+// every PLATFORM-wide route (users, settings, AI keys, exams, payments…)
+// must use this instead of plain adminOnly — otherwise a coaching owner
+// could enumerate/delete all users of the whole platform.
+export function platformOnly(req, res, next) {
+  if (!req.user || req.user.role !== 'admin' || req.user.institute_id) {
+    return res.status(403).json({ error: 'Platform admin access required' })
+  }
+  next()
+}

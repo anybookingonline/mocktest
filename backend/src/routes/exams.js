@@ -1,6 +1,6 @@
 import express from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { cacheGet, cacheSet, cacheDel } from '../utils/redis.js'
 
 const router = express.Router()
@@ -51,7 +51,7 @@ router.get('/:id/syllabus', async (req, res) => {
 // ---- Admin: manage exams & syllabus ----
 
 // POST /api/exams  (admin)
-router.post('/', adminOnly, async (req, res) => {
+router.post('/', platformOnly, async (req, res) => {
   const b = req.body || {}
   const code = String(b.code || '').trim().toUpperCase()
   if (!code || !b.name) return res.status(400).json({ error: 'code and name required' })
@@ -68,7 +68,7 @@ router.post('/', adminOnly, async (req, res) => {
 })
 
 // PUT /api/exams/:id (admin)
-router.put('/:id', adminOnly, async (req, res) => {
+router.put('/:id', platformOnly, async (req, res) => {
   const b = req.body || {}
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(req.params.id)
   if (!exam) return res.status(404).json({ error: 'Exam not found' })
@@ -84,14 +84,14 @@ router.put('/:id', adminOnly, async (req, res) => {
 })
 
 // DELETE /api/exams/:id (admin)
-router.delete('/:id', adminOnly, async (req, res) => {
+router.delete('/:id', platformOnly, async (req, res) => {
   const r = await db.prepare('DELETE FROM exams WHERE id = ?').run(req.params.id)
   await cacheDel('exams:list')
   res.json({ deleted: r.changes })
 })
 
 // POST /api/exams/:id/syllabus (admin) - upsert syllabus
-router.post('/:id/syllabus', adminOnly, async (req, res) => {
+router.post('/:id/syllabus', platformOnly, async (req, res) => {
   const examId = Number(req.params.id)
   if (!await db.prepare('SELECT id FROM exams WHERE id = ?').get(examId)) return res.status(404).json({ error: 'Exam not found' })
   const subjects = req.body?.subjects || []

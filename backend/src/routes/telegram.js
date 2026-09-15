@@ -122,8 +122,16 @@ async function handleUpdate(update) {
 // Telegram calls this webhook; secret header check prevents spoofing
 router.post('/webhook', aiLimiter({ max: 60, windowSec: 60 }), async (req, res) => {
   const secret = await getConfig('telegram.webhookSecret')
+  // Hard requirement once a secret exists: without this check anyone on the
+  // internet could POST fake Telegram updates (spoof /start codes, inject
+  // messages, enumerate link codes). Fail closed — Telegram retries anyway.
   if (secret && req.headers['x-telegram-bot-api-secret-token'] !== secret) {
     return res.status(401).json({ ok: false })
+  }
+  if (!secret) {
+    // No secret configured yet (fresh bot) — reject unsigned traffic loudly.
+    // The admin 'Wire webhook automatically' button sets the secret atomically.
+    return res.status(401).json({ ok: false, error: 'Webhook secret not configured — press Wire webhook in Admin → AI Config' })
   }
   res.json({ ok: true }) // answer Telegram immediately; process after
   try { await handleUpdate(req.body || {}) } catch (e) {
@@ -167,8 +175,8 @@ router.post('/admin/test', authRequiredAdmin, async (req, res) => {
 })
 
 async function authRequiredAdmin(req, res, next) {
-  const { authRequired, adminOnly } = await import('../middleware/auth.js')
-  authRequired(req, res, (e) => e ? next(e) : adminOnly(req, res, next))
+  const { authRequired, platformOnly } = await import('../middleware/auth.js')
+  authRequired(req, res, (e) => e ? next(e) : platformOnly(req, res, next))
 }
 
 export default router

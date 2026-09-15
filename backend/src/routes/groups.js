@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { getGroupConfig, listMyGroups, createGroup, joinGroup, leaveGroup,
   isGroupMember, groupDetail, messagesSince, postGroupMessage, recomputeGroupEntitlements, canCreateGroup } from '../utils/groups.js'
 import { awardPoints } from '../utils/points.js'
@@ -106,8 +106,10 @@ router.post('/:id/leave', requireFlag, async (req, res) => {
 
 // ------------------------------- admin -------------------------------------
 
-// POST /api/groups/admin/recompute/:id — re-run the deal engine for a group
-router.post('/admin/recompute/:id', authRequired, adminOnly, async (req, res) => {
+// POST /api/groups/admin/recompute/:id — re-run the deal engine for a group.
+// platformOnly: institute sub-admins have no business triggering platform
+// deal recomputation.
+router.post('/admin/recompute/:id', authRequired, platformOnly, async (req, res) => {
   const out = await recomputeGroupEntitlements(Number(req.params.id))
   res.json({ ok: true, ...out })
 })

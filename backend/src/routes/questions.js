@@ -1,6 +1,6 @@
 import express from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, platformOnly } from '../middleware/auth.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -49,7 +49,7 @@ router.get('/:id', async (req, res) => {
 })
 
 // POST /api/questions (admin) - create/import manual question
-router.post('/', adminOnly, async (req, res) => {
+router.post('/', platformOnly, async (req, res) => {
   const b = req.body || {}
   const { examId, subjectId, chapterId, topicId } = b
   if (!examId || !b.question) return res.status(400).json({ error: 'examId and question text required' })
@@ -66,7 +66,7 @@ router.post('/', adminOnly, async (req, res) => {
 })
 
 // PUT /api/questions/:id (admin)
-router.put('/:id', adminOnly, async (req, res) => {
+router.put('/:id', platformOnly, async (req, res) => {
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id)
   if (!q) return res.status(404).json({ error: 'Question not found' })
   const b = req.body || {}
@@ -81,7 +81,7 @@ router.put('/:id', adminOnly, async (req, res) => {
 })
 
 // DELETE /api/questions/:id (admin)
-router.delete('/:id', adminOnly, async (req, res) => {
+router.delete('/:id', platformOnly, async (req, res) => {
   const r = await db.prepare('DELETE FROM questions WHERE id = ?').run(req.params.id)
   res.json({ deleted: r.changes })
 })

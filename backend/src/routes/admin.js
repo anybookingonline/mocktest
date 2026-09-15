@@ -1,11 +1,11 @@
 import express from 'express'
 import bcrypt from 'bcryptjs'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { b2SelfTest, b2Status } from '../utils/b2.js'
 
 const router = express.Router()
-router.use(authRequired, adminOnly)
+router.use(authRequired, platformOnly)
 
 // GET /api/admin/stats - platform overview
 router.get('/stats', async (req, res) => {

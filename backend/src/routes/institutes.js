@@ -146,9 +146,11 @@ me.post('/invites', async (req, res) => {
   res.status(201).json(out)
 })
 
-// Pause/resume an invite (body: { active: true|false } or toggles when absent)
+// Pause/resume an invite (body: { active: true|false } or toggles when absent).
+// Ownership check: the invite MUST belong to the caller's institute — prevents
+// a sub-admin pausing a rival institute's registration code (IDOR).
 me.post('/invites/:id/toggle', async (req, res) => {
-  const inv = await db.prepare('SELECT is_active FROM institute_invites WHERE id = ?').get(Number(req.params.id))
+  const inv = await db.prepare('SELECT is_active FROM institute_invites WHERE id = ? AND institute_id = ?').get(Number(req.params.id), Number(req.instituteId))
   if (!inv) return res.status(404).json({ error: 'Invite not found' })
   const next = req.body?.active != null ? (req.body.active ? 1 : 0) : (Number(inv.is_active) ? 0 : 1)
   res.json(await toggleInvite(req.params.id, Boolean(next)))
@@ -161,9 +163,14 @@ me.post('/students/bulk', async (req, res) => {
 
 me.put('/branding', async (req, res) => {
   const patch = req.body || {}
+  // Sub-admins may set branding only. plan/plan_until/status are business
+  // fields; custom_domain is reserved for the PLATFORM admin — otherwise a
+  // sub-admin could claim the platform's own domain and hijack the main
+  // site's branding resolution.
   delete patch.plan
   delete patch.plan_until
   delete patch.status
+  delete patch.custom_domain
   const out = await updateInstitute(req.instituteId, patch)
   if (out.error) return res.status(400).json(out)
   res.json(out)

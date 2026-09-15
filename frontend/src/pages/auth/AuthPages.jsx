@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useToast } from '../../components/ui.jsx'
 import { Brand } from '../../components/Layout.jsx'
-import { LangSwitcher } from '../../context/LangContext.jsx'
+import { useLang, LangSwitcher } from '../../context/LangContext.jsx'
 import { api } from '../../api/client.js'
 
 export function Splash() {
@@ -38,6 +38,7 @@ export function LoginPage() {
   const { login } = useAuth()
   const toast = useToast()
   const nav = useNavigate()
+  const { t } = useLang()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -47,7 +48,7 @@ export function LoginPage() {
     setBusy(true)
     try {
       const u = await login(email, password)
-      toast('Welcome back!', 'ok')
+      toast(t('auth.toast.welcome'), 'ok')
       nav(u.role === 'admin' ? '/admin' : '/')
     } catch (err) {
       toast(err.message, 'err')
@@ -55,19 +56,19 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Log in to continue your preparation">
+    <AuthShell title={t('auth.login.t')} subtitle={t('auth.login.s')}>
       <form onSubmit={submit}>
-        <label className="field"><span>Email</span>
+        <label className="field"><span>{t('auth.email')}</span>
           <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
         </label>
-        <label className="field"><span>Password</span>
+        <label className="field"><span>{t('auth.password')}</span>
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
         </label>
-        <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>{busy ? 'Logging in…' : 'Log In'}</button>
+        <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>{busy ? t('auth.logging') : t('auth.login.btn')}</button>
       </form>
       <div className="row mt" style={{ justifyContent: 'center' }}>
-        <span className="tiny">New here?</span>
-        <a href="/register" onClick={(e) => { e.preventDefault(); nav('/register') }}>Create account</a>
+        <span className="tiny">{t('auth.newhere')}</span>
+        <a href="/register" onClick={(e) => { e.preventDefault(); nav('/register') }}>{t('auth.create')}</a>
       </div>
     </AuthShell>
   )
@@ -77,6 +78,7 @@ export function RegisterPage() {
   const { register } = useAuth()
   const toast = useToast()
   const nav = useNavigate()
+  const { t } = useLang()
   const [params] = useSearchParams()
   const schCode = params.get('sch') || ''
   const [invite, setInvite] = useState(null) // { institute: { name } }
@@ -101,7 +103,7 @@ export function RegisterPage() {
     setBusy(true)
     try {
       await register(name, email, password, target, inviteCode.trim() || undefined)
-      toast('Account created!', 'ok')
+      toast(t('auth.toast.created'), 'ok')
       nav('/')
     } catch (err) {
       toast(err.message, 'err')
@@ -109,39 +111,39 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthShell title="Create your account" subtitle="Start free AI-powered practice today">
+    <AuthShell title={t('auth.reg.t')} subtitle={t('auth.reg.s')}>
       {schCode && invite && (
         <div className="mb" style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${invite.valid ? 'var(--green)' : 'var(--red)'}`, background: 'var(--bg2)' }}>
           {invite.valid
-            ? <span className="small">🏫 Joining <b>{invite.institute.name}</b> — account automatically linked!</span>
-            : <span className="small" style={{ color: 'var(--red)' }}>⚠️ Invite code invalid ya expired — bina code bhi register kar sakte ho.</span>}
+            ? <span className="small">{t('auth.joining').replace('{inst}', invite.institute.name)}</span>
+            : <span className="small" style={{ color: 'var(--red)' }}>{t('auth.invite.bad')}</span>}
         </div>
       )}
       <form onSubmit={submit}>
-        <label className="field"><span>Full name</span>
+        <label className="field"><span>{t('auth.name')}</span>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
-        <label className="field"><span>Email</span>
+        <label className="field"><span>{t('auth.email')}</span>
           <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
-        <label className="field"><span>Password</span>
-          <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="min 6 characters" required />
+        <label className="field"><span>{t('auth.password')}</span>
+          <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('auth.min6')} required />
         </label>
-        <label className="field"><span>Target exam</span>
+        <label className="field"><span>{t('auth.target')}</span>
           <select className="select" value={target} onChange={(e) => setTarget(e.target.value)}>
             {['JEE Main', 'NEET UG', 'UPSC CSE', 'SSC CGL', 'Banking PO', 'CAT', 'GATE', 'CUET UG'].map((x) => <option key={x}>{x}</option>)}
           </select>
         </label>
         {!schCode && (
-          <label className="field"><span>School / Coaching invite code (optional)</span>
+          <label className="field"><span>{t('auth.invite')}</span>
             <input className="input" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="SCH-XXXX" />
           </label>
         )}
-        <button className="btn btn-accent" style={{ width: '100%' }} disabled={busy}>{busy ? 'Creating…' : 'Sign Up'}</button>
+        <button className="btn btn-accent" style={{ width: '100%' }} disabled={busy}>{busy ? t('auth.creating') : t('auth.signup')}</button>
       </form>
       <div className="row mt" style={{ justifyContent: 'center' }}>
-        <span className="tiny">Already registered?</span>
-        <a href="/login" onClick={(e) => { e.preventDefault(); nav('/login') }}>Log in</a>
+        <span className="tiny">{t('auth.already')}</span>
+        <a href="/login" onClick={(e) => { e.preventDefault(); nav('/login') }}>{t('auth.login.btn')}</a>
       </div>
     </AuthShell>
   )

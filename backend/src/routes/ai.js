@@ -1,6 +1,6 @@
 import express from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
 import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
@@ -49,9 +49,10 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
     })
     await db.prepare(`INSERT INTO doubts (user_id, question_id, question_text, message, ai_response, model)
       VALUES (?,?,?,?,?,?)`).run(req.user.id, questionId || null, q?.question_text || questionText || null, message, response, 'ai')
-    // Recognition: asking + resolving a doubt both earn points
+    // Recognition: asking earns points immediately; resolution is awarded by
+    // the tutor flow when the student confirms it helped (not per API call —
+    // otherwise every spam doubt would farm resolution points too).
     await awardPoints(req.user.id, 'doubt_asked')
-    await awardPoints(req.user.id, 'doubt_resolved')
     // Contextual ad (free users only; paid users keep a clean tutor surface).
     // Fire-and-forget semantics: ad failure never affects the doubt response.
     let ad = null
@@ -295,12 +296,12 @@ router.get('/provider-status', async (req, res) => {
 })
 
 // GET /api/ai/custom-presets (admin) - quick presets for the custom provider
-router.get('/custom-presets', adminOnly, (req, res) => {
+router.get('/custom-presets', platformOnly, (req, res) => {
   res.json({ presets: CUSTOM_PRESETS })
 })
 
 // POST /api/ai/config (admin) - save provider settings
-router.post('/config', adminOnly, aiLimiter(), async (req, res) => {
+router.post('/config', platformOnly, aiLimiter(), async (req, res) => {
   const b = req.body || {}
   const allowed = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model', 'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
     'features.voiceDoubts', 'features.telegramBot', 'openai.apiKey', 'telegram.botToken', 'telegram.botUsername']

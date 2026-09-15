@@ -36,11 +36,14 @@ function instituteCode(name) {
 }
 
 export async function listInstitutes() {
-  return db.prepare(`
-    SELECT i.*,
-      (SELECT COUNT(*) FROM users u WHERE u.institute_id = i.id AND u.role = 'student') students,
-      (SELECT COUNT(*) FROM institute_invites v WHERE v.institute_id = i.id AND v.is_active = 1) invites
-    FROM institutes i ORDER BY i.id DESC`).all()
+  const rows = await db.prepare('SELECT * FROM institutes ORDER BY id DESC').all()
+  // Per-row counts via separate indexed queries — avoids correlated
+  // subqueries in the SELECT list (also more portable across PG flavors).
+  return Promise.all(rows.map(async (i) => ({
+    ...i,
+    students: Number((await db.prepare("SELECT COUNT(*) c FROM users WHERE institute_id = ? AND role = 'student'").get(i.id))?.c) || 0,
+    invites: Number((await db.prepare('SELECT COUNT(*) c FROM institute_invites WHERE institute_id = ? AND is_active = 1').get(i.id))?.c) || 0
+  })))
 }
 
 export async function createInstitute({ name, contactEmail, planDays = 30, kind = 'coaching' }) {
@@ -158,11 +161,18 @@ export async function bulkCreateStudents({ instituteId, csv }) {
 }
 
 export async function instituteStudents(instituteId) {
+  // LEFT JOIN + GROUP BY instead of per-row correlated subqueries — one scan,
+  // and portable across Postgres flavors.
   const rows = await db.prepare(`SELECT u.id, u.name, u.email, u.created_at,
-    (SELECT COUNT(*) FROM attempts a WHERE a.user_id = u.id AND a.status='completed') tests_taken,
-    (SELECT COALESCE(AVG(a.score),0) FROM attempts a WHERE a.user_id = u.id AND a.status='completed') avg_score,
-    (SELECT COALESCE(AVG(a.accuracy),0) FROM attempts a WHERE a.user_id = u.id AND a.status='completed') avg_accuracy
-    FROM users u WHERE u.institute_id = ? AND u.role = 'student' ORDER BY u.created_at DESC LIMIT 500`).all(Number(instituteId))
+    COUNT(a.id) FILTER (WHERE a.status = 'completed') AS tests_taken,
+    COALESCE(AVG(a.score) FILTER (WHERE a.status = 'completed'), 0) AS avg_score,
+    COALESCE(AVG(a.accuracy) FILTER (WHERE a.status = 'completed'), 0) AS avg_accuracy
+    FROM users u
+    LEFT JOIN attempts a ON a.user_id = u.id
+    WHERE u.institute_id = ? AND u.role = 'student'
+    GROUP BY u.id, u.name, u.email, u.created_at
+    ORDER BY u.created_at DESC
+    LIMIT 500`).all(Number(instituteId))
   // Round in JS — portable across Postgres flavors (AVG types vary).
   return rows.map((r) => ({ ...r, avg_score: Math.round(Number(r.avg_score) || 0), avg_accuracy: Math.round(Number(r.avg_accuracy) || 0) }))
 }

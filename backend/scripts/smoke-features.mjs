@@ -56,7 +56,7 @@ try {
   ok('telegram/link blocked while disabled (403)', tl.s === 403, `status=${tl.s}`)
 
   const wh = await call('/api/telegram/webhook', { method: 'POST', body: { message: { text: '/start', chat: { id: 999 } } } })
-  ok('telegram webhook responds ok:true', wh.s === 200 && wh.d.ok === true, `status=${wh.s}`)
+  ok('telegram webhook unsigned → 401 (fail-closed anti-spoof)', wh.s === 401, `status=${wh.s}`)
 
   // Enable flags directly in DB, then re-check (simulates admin saving config)
   await db.prepare(`INSERT INTO ai_configs (key, value) VALUES ('features.telegramBot','true'),('telegram.botToken','123:fake'),('features.voiceDoubts','false')

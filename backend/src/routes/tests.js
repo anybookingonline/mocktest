@@ -1,6 +1,6 @@
 import express from 'express'
 import db from '../db.js'
-import { authRequired, adminOnly } from '../middleware/auth.js'
+import { authRequired, platformOnly } from '../middleware/auth.js'
 import { aiLimiter } from '../middleware/rateLimit.js'
 import { generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
 
@@ -128,7 +128,7 @@ router.post('/ai', aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
 })
 
 // DELETE /api/tests/:id (admin)
-router.delete('/:id', adminOnly, async (req, res) => {
+router.delete('/:id', platformOnly, async (req, res) => {
   await db.prepare('DELETE FROM test_questions WHERE test_id = ?').run(req.params.id)
   const r = await db.prepare('DELETE FROM tests WHERE id = ?').run(req.params.id)
   res.json({ deleted: r.changes })
