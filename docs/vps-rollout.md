@@ -24,6 +24,40 @@
 concurrent users aaram se. Rate limiter Redis ke bina in-process fallback
 chalta hai; single instance me Redis ki zaroorat nahi.
 
+### Resource sizing — kitne core / kitna RAM kab
+
+App runtime = 1 Node process + Postgres. Bhari kaam (AI extraction, structuring)
+external APIs par hota hai — VPS par sirf CRUD + proxy chalta hai, isliye chhota
+container bhi kaafi hai. Jab tak app EK instance hai, Redis kahin nahi chahiye.
+
+| Stage | Users (approx) | App container | Postgres container | Redis |
+|---|---|---|---|---|
+| **Launch (abhi)** | 0–500 (50–100 concurrent) | 1 core, 1 GB (limit 1.5 GB) | 1 core, 1 GB (shared_buffers 256 MB) | ❌ nahi |
+| **Growth** | 500–5,000 (500–1,000 concurrent) | 2 cores, 2 GB | 2 cores, 4 GB (shared_buffers 1 GB) | ❌ nahi |
+| **Scale** | 5,000–20,000+ (1,000+ concurrent) | 2–4 cores, 4 GB | 4 cores, 8 GB + tuning | tab bhi sirf multi-instance par |
+
+**Upgrade ke real signals (Coolify stats / hTop):**
+- Node RAM limit ke 70%+ par consistent → RAM badhao (memory limit peak me
+  hit hoke OOM-kill hone se pehle)
+- Peak hours me CPU sustained 60–70%+ → +1 core
+- Postgres me slow queries / connection waits → RAM + `max_connections` review
+
+**Redis ka sach (dhyan se):** `utils/redis.js` **Upstash REST client** hai —
+local Redis container se connect nahi hota (wo `ioredis`/`redis` client maangta
+hai). Matlab:
+1. Abhi Redis container banane se is app ko koi fayda nahi — wo use karegi hi
+   nahi, in-process cache/rate-limit hi chalega (single instance ke liye sahi).
+2. Baaki apps ko Redis chahiye to unka apna Redis container banao — is app se
+   koi relation nahi, resources share honge bas.
+3. Jab kabhi app **2+ instances** me chalega (shared rate-limit/cache ke liye)
+   tab `utils/redis.js` me `ioredis` + `REDIS_URL` support add karna hoga
+   (interface same rehta hai, ~1 ghanta ka kaam) — aur tab Coolify me ek Redis
+   container is app ke saath dena. Aaj karne ki zaroorat nahi.
+
+**Note:** Coolify deploy ke waqt `npm install` + `vite build` isi VPS par
+chalta hai — 1–2 min ke liye CPU spike aayega. Ye transient hai; app container
+me 1+ core rehne se deploy dheema nahi hoga.
+
 ### Coolify setup steps
 
 1. **Postgres resource** banao (Coolify → New Resource → PostgreSQL).
