@@ -35,14 +35,34 @@ function instituteCode(name) {
   return `${base}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`
 }
 
+// First day of the current month as TEXT — created_at columns are stored as
+// 'YYYY-MM-DD HH24:MI:SS' text, so lexicographic comparison works everywhere.
+function monthStart() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01 00:00:00`
+}
+
 export async function listInstitutes() {
   const rows = await db.prepare('SELECT * FROM institutes ORDER BY id DESC').all()
   // Per-row counts via separate indexed queries — avoids correlated
   // subqueries in the SELECT list (also more portable across PG flavors).
+  // Phase 4: PDF pipeline aggregates computed as 3 GROUP-BY queries and merged
+  // in JS — one scan each regardless of institute count.
+  const ms = monthStart()
+  const [usedRows, pendingRows, publishedRows] = await Promise.all([
+    db.prepare('SELECT institute_id, COUNT(*) c FROM pdf_imports WHERE created_at >= ? GROUP BY institute_id').all(ms),
+    db.prepare("SELECT institute_id, COUNT(*) c FROM pdf_question_staging WHERE status = 'pending' GROUP BY institute_id").all(),
+    db.prepare("SELECT institute_id, COUNT(*) c FROM pdf_question_staging WHERE status = 'approved' AND question_id IS NOT NULL GROUP BY institute_id").all()
+  ])
+  const byInst = (arr) => Object.fromEntries(arr.map((r) => [Number(r.institute_id), Number(r.c)]))
+  const usedMap = byInst(usedRows), pendingMap = byInst(pendingRows), pubMap = byInst(publishedRows)
   return Promise.all(rows.map(async (i) => ({
     ...i,
     students: Number((await db.prepare("SELECT COUNT(*) c FROM users WHERE institute_id = ? AND role = 'student'").get(i.id))?.c) || 0,
-    invites: Number((await db.prepare('SELECT COUNT(*) c FROM institute_invites WHERE institute_id = ? AND is_active = 1').get(i.id))?.c) || 0
+    invites: Number((await db.prepare('SELECT COUNT(*) c FROM institute_invites WHERE institute_id = ? AND is_active = 1').get(i.id))?.c) || 0,
+    pdf_used_this_month: usedMap[i.id] || 0,
+    pdf_pending_review: pendingMap[i.id] || 0,
+    pdf_published_total: pubMap[i.id] || 0
   })))
 }
 
@@ -219,12 +239,26 @@ export async function instituteStats(instituteId) {
     WHERE u.institute_id = ?
     GROUP BY t.id, t.name, s.name
     HAVING SUM(ts.attempts) >= 5`).all(Number(instituteId))
+  // Phase 4: PDF pipeline + review-queue stats (admin quota usage view)
+  const instQuota = await s('SELECT ai_daily_quota, ai_import_quota FROM institutes WHERE id = ?', Number(instituteId))
+  const pdfUsed = await s('SELECT COUNT(*) c FROM pdf_imports WHERE institute_id = ? AND created_at >= ?', Number(instituteId), monthStart())
+  const pdfTotal = await s('SELECT COUNT(*) c FROM pdf_imports WHERE institute_id = ?', Number(instituteId))
+  const pdfPending = await s("SELECT COUNT(*) c FROM pdf_question_staging WHERE institute_id = ? AND status = 'pending'", Number(instituteId))
+  const pdfPublished = await s("SELECT COUNT(*) c FROM pdf_question_staging WHERE institute_id = ? AND status = 'approved' AND question_id IS NOT NULL", Number(instituteId))
+  const pdfRecent = await db.prepare(`SELECT id, filename, status, questions_created, review_required, created_at
+    FROM pdf_imports WHERE institute_id = ? ORDER BY id DESC LIMIT 5`).all(Number(instituteId))
   return {
     students: Number(students?.c) || 0,
     activeLast7: Number(active7?.c) || 0,
     testsCompleted: Number(tests?.c) || 0,
     avgAccuracy: Math.round(Number(avg?.c) || 0),
-    ai_daily_quota: Number((await s('SELECT ai_daily_quota FROM institutes WHERE id = ?', Number(instituteId)))?.ai_daily_quota) || 0,
+    ai_daily_quota: Number(instQuota?.ai_daily_quota) || 0,
+    ai_import_quota: Number(instQuota?.ai_import_quota) || 0,
+    pdf_used_this_month: Number(pdfUsed?.c) || 0,
+    pdf_imports_total: Number(pdfTotal?.c) || 0,
+    pdf_pending_review: Number(pdfPending?.c) || 0,
+    pdf_published_total: Number(pdfPublished?.c) || 0,
+    pdf_recent: pdfRecent,
     weakTopics: weak
       .map((w) => ({ ...w, accuracy: w.attempts ? Math.round((w.correct / w.attempts) * 100) : 0 }))
       .sort((a, b) => a.accuracy - b.accuracy)

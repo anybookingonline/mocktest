@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 import db from '../db.js'
 import { authRequired, platformOnly } from '../middleware/auth.js'
 import { uploadLimiter } from '../middleware/rateLimit.js'
-import { extractPdfQuestions, structureExtractedQuestions, persistQuestions } from '../utils/aiTasks.js'
+import { extractPdfQuestions, structureExtractedQuestions, persistQuestions, stageExtractedQuestions } from '../utils/aiTasks.js'
 import { hashContent } from '../utils/aiService.js'
 import { b2Configured, putFile } from '../utils/b2.js'
 
@@ -52,8 +52,11 @@ router.post('/pdf', platformOnly, uploadLimiter(), upload.single('file'), async 
     }
   }
 
-  // Reuse: same paper never processed twice
-  const dup = await db.prepare(`SELECT * FROM pdf_imports WHERE file_hash = ? AND status = 'completed'`).get(fileHash)
+  // Reuse: same paper never processed twice. This endpoint is platform-admin
+  // only, so the file hash can only collide with the platform's own imports
+  // (institute uploads are scoped in routes/institutes.js and are NOT hidden
+  // by this check).
+  const dup = await db.prepare(`SELECT * FROM pdf_imports WHERE file_hash = ? AND institute_id IS NULL AND status = 'completed'`).get(fileHash)
   if (dup) {
     fs.unlink(req.file.path, () => {})
     return res.json({ reused: true, importId: dup.id, questions_created: dup.questions_created, message: 'This paper was already imported before. Using the stored question bank — no re-processing needed.' })
@@ -71,20 +74,11 @@ router.post('/pdf', platformOnly, uploadLimiter(), upload.single('file'), async 
   })
 })
 
-// GET /api/import/list - admin list of imports
-router.get('/list', platformOnly, async (req, res) => {
-  const rows = await db.prepare('SELECT * FROM pdf_imports ORDER BY created_at DESC LIMIT 100').all()
-  res.json({ imports: rows })
-})
-
-// GET /api/import/:id - status of an import
-router.get('/:id', platformOnly, async (req, res) => {
-  const row = await db.prepare('SELECT * FROM pdf_imports WHERE id = ?').get(req.params.id)
-  if (!row) return res.status(404).json({ error: 'Import not found' })
-  res.json({ import: row })
-})
-
-async function processPdf(importId, examId, buffer, filePath) {
+// Exported so the institute (sub-admin) PDF route can reuse the exact same
+// Gemini Vision + DeepSeek pipeline (dedup, syllabus mapping, persistence).
+// opts.stageOnly: park the extraction in the review queue (pdf_question_staging)
+// instead of publishing to the shared bank — institute self-serve imports.
+export async function processPdf(importId, examId, buffer, filePath, opts = {}) {
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(examId)
   try {
     // Step 1: Gemini Vision extracts questions (handles scanned/image/multi-column/low-quality PDFs)
@@ -100,17 +94,38 @@ async function processPdf(importId, examId, buffer, filePath) {
     if (!structured.length) throw new Error('No questions could be extracted from this PDF')
 
     // Step 3: Map subjects -> create missing syllabus nodes, persist questions (deduped)
-    const mapping = await mapSyllabus(examId, structured)
-    const created = await persistQuestions(structured, { exam, source: 'pdf', sourceMeta: { importId, year: extracted.year, shift: extracted.shift } }, { mapping })
+    if (opts.stageOnly) {
+      // Review-queue flow: extraction parks in staging; status 'review' tells
+      // the dashboard to stop polling and show the Review button instead.
+      const { staged, dupes } = await stageExtractedQuestions(structured, { importId, instituteId: opts.instituteId, examId })
+      await db.prepare(`UPDATE pdf_imports SET status='review', error=? WHERE id=?`)
+        .run(`Review queue: ${staged} naye questions + ${dupes} duplicates (bank me already the). Approve karo publish ke liye.`, importId)
+    } else {
+      const mapping = await mapSyllabus(examId, structured)
+      const created = await persistQuestions(structured, { exam, source: 'pdf', sourceMeta: { importId, year: extracted.year, shift: extracted.shift } }, { mapping })
 
-    await db.prepare(`UPDATE pdf_imports SET status='completed', questions_created=?, error=? WHERE id=?`)
-      .run(created, created === 0 ? 'All questions were duplicates (already in bank)' : null, importId)
+      await db.prepare(`UPDATE pdf_imports SET status='completed', questions_created=?, error=? WHERE id=?`)
+        .run(created, created === 0 ? 'All questions were duplicates (already in bank)' : null, importId)
+    }
     // cleanup uploaded file
     fs.unlink(filePath, () => {})
   } catch (e) {
     await db.prepare(`UPDATE pdf_imports SET status='failed', error=? WHERE id=?`).run(String(e.message || e).slice(0, 2000), importId)
   }
 }
+
+// GET /api/import/list - admin list of imports
+router.get('/list', platformOnly, async (req, res) => {
+  const rows = await db.prepare('SELECT * FROM pdf_imports ORDER BY created_at DESC LIMIT 100').all()
+  res.json({ imports: rows })
+})
+
+// GET /api/import/:id - status of an import
+router.get('/:id', platformOnly, async (req, res) => {
+  const row = await db.prepare('SELECT * FROM pdf_imports WHERE id = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Import not found' })
+  res.json({ import: row })
+})
 
 async function mapSyllabus(examId, questions) {
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ?').all(examId)

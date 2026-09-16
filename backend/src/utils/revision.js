@@ -1,6 +1,7 @@
 import db from '../db.js'
 import { getConfig } from './aiService.js'
 import { generateQuestionsWithAI, persistQuestions } from './aiTasks.js'
+import { visibilityInstId } from './visibility.js'
 
 // ---------------------------------------------------------------------------
 // Spaced Revision (#7) + Doubt-to-Mock (#4).
@@ -81,13 +82,16 @@ export async function startRevisionMock(userId) {
   if (!due.length) return { empty: true }
   const topicIds = due.map((t) => Number(t.topic_id))
   const marks = '?,'.repeat(topicIds.length).slice(0, -1)
+  // Institute isolation: revision picks global + own-institute questions only.
+  const instId = await visibilityInstId(userId)
+  const vis = instId > 0 ? '(q.institute_id IS NULL OR q.institute_id = ?)' : 'q.institute_id IS NULL'
   // Filtering in SQL + JS: keeps the query portable across Postgres flavors
   // (pg-mem mishandles JOIN + IS NOT NULL combinations).
   const qs = (await db.prepare(`
     SELECT q.id, q.exam_id, q.difficulty, t.name AS topic_name FROM questions q
     JOIN topics t ON t.id = q.topic_id
-    WHERE q.topic_id IN (${marks}) AND q.is_active = 1
-  `).all(...topicIds)).filter((q) => q.exam_id != null)
+    WHERE q.topic_id IN (${marks}) AND q.is_active = 1 AND ${vis}
+  `).all(...topicIds, ...(instId > 0 ? [instId] : []))).filter((q) => q.exam_id != null)
   if (!qs.length) return { empty: true }
   // Fisher-Yates shuffle for freshness, then hardest-difficulty-first pick.
   const diffRank = { hard: 0, medium: 1, easy: 2 }

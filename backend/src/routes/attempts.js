@@ -3,6 +3,7 @@ import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
 import { recordTopicOutcome } from '../utils/revision.js'
 import { awardPoints } from '../utils/points.js'
+import { visibilityInstId } from '../utils/visibility.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -14,13 +15,17 @@ function parseJ(str, f = []) { try { return JSON.parse(str || '[]') } catch { re
 router.post('/', async (req, res) => {
   const { testId, timeLimitSeconds, questionIds } = req.body || {}
   const test = testId ? await db.prepare('SELECT * FROM tests WHERE id = ?').get(testId) : null
+  const instId = await visibilityInstId(req.user.id)
+  const vis = instId > 0 ? '(q.institute_id IS NULL OR q.institute_id = ?)' : 'q.institute_id IS NULL'
   let questions
   if (test) {
     questions = await db.prepare(`SELECT q.* FROM questions q JOIN test_questions tq ON tq.question_id = q.id
-      WHERE tq.test_id = ? AND q.is_active = 1 ORDER BY tq.position`).all(test.id)
+      WHERE tq.test_id = ? AND q.is_active = 1 AND ${vis} ORDER BY tq.position`).all(test.id, ...(instId > 0 ? [instId] : []))
   } else if (questionIds?.length) {
     const marks = '?,'.repeat(questionIds.length).slice(0, -1)
-    questions = await db.prepare(`SELECT * FROM questions WHERE id IN (${marks})`).all(...questionIds.map(Number))
+    // Direct ids (practice sets): server-side visibility filter after fetch
+    const fetched = await db.prepare(`SELECT * FROM questions WHERE id IN (${marks})`).all(...questionIds.map(Number))
+    questions = fetched.filter((q) => !q.institute_id || Number(q.institute_id) === instId)
   } else {
     return res.status(400).json({ error: 'Provide testId or questionIds' })
   }
@@ -53,9 +58,13 @@ router.get('/:id', async (req, res) => {
   const a = await db.prepare('SELECT * FROM attempts WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
   if (!a) return res.status(404).json({ error: 'Attempt not found' })
   const qids = parseJ(a.questions_json)
-  const rows = await db.prepare(`SELECT id, qtype, question_text, options_json, correct_answer, explanation,
+  // New retrievals stay visibility-filtered; already-answered questions from a
+  // live session still resolve (attempt ownership was checked above).
+  const instId = await visibilityInstId(req.user.id)
+  const rows = (await db.prepare(`SELECT id, qtype, question_text, options_json, correct_answer, explanation,
     difficulty, marks, negative_marks, estimated_time, year, shift, tags_json, subject_id, chapter_id, topic_id
-    FROM questions WHERE id IN (${'?,'.repeat(qids.length).slice(0, -1) || 'NULL'})`).all(...qids)
+    FROM questions WHERE id IN (${'?,'.repeat(qids.length).slice(0, -1) || 'NULL'})`).all(...qids))
+    .filter((q) => !q.institute_id || Number(q.institute_id) === instId)
   const orderMap = Object.fromEntries(qids.map((id, i) => [id, i]))
   const questions = rows.sort((x, y) => (orderMap[x.id] ?? 0) - (orderMap[y.id] ?? 0)).map(q => ({
     ...q, options: JSON.parse(q.options_json || '[]'), tags: JSON.parse(q.tags_json || '[]')

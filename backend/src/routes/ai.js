@@ -9,6 +9,7 @@ import { getEntitlements } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
 import { getContextualAd, publicAdFields } from '../utils/monetize.js'
 import { checkInstituteAiQuota } from '../utils/institute.js'
+import { visibilityInstId } from '../utils/visibility.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -65,7 +66,15 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
     }
   }
   let q = null
-  if (questionId) q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
+  if (questionId) {
+    q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
+    // AI-tutor context: institute-private questions leak nahi hone chahiye —
+    // dusre institute ka question explain karne se pehle ownership check.
+    if (q?.institute_id) {
+      const instId = await visibilityInstId(req.user.id)
+      if (Number(q.institute_id) !== instId) q = null
+    }
+  }
   try {
     const response = await solveDoubtWithAI({
       questionText: q?.question_text || questionText || '',
@@ -107,6 +116,11 @@ router.post('/explain', aiLimiter(), async (req, res) => {
   const { questionId, language } = req.body || {}
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
   if (!q) return res.status(404).json({ error: 'Question not found' })
+  // Institute-private: sirf same-institute user hi AI explanation le sakta hai
+  if (q.institute_id) {
+    const instId = await visibilityInstId(req.user.id)
+    if (Number(q.institute_id) !== instId) return res.status(404).json({ error: 'Question not found' })
+  }
   try {
     const explanation = await explainQuestionWithAI({
       questionText: q.question_text, options: JSON.parse(q.options_json || '[]'), correctAnswer: q.correct_answer,
@@ -193,9 +207,13 @@ router.post('/adaptive/:id/next', async (req, res) => {
 
   const cfg = state.config || {}
   // Scoped picker: current difficulty first, then relax one step.
+  // Institute isolation: student ko global + apne institute ke questions only.
+  const myInstId = await visibilityInstId(req.user.id)
   const pick = async (scope = {}) => {
     const where = ['exam_id = ?', 'is_active = 1']
     const params = [scope.examId ?? cfg.examId]
+    if (myInstId > 0) { where.push('(institute_id IS NULL OR institute_id = ?)'); params.push(myInstId) }
+    else where.push('institute_id IS NULL')
     const subjectId = scope.subjectId !== undefined ? scope.subjectId : cfg.subjectId
     const chapterId = scope.chapterId !== undefined ? scope.chapterId : cfg.chapterId
     const topicId = scope.topicId !== undefined ? scope.topicId : cfg.topicId

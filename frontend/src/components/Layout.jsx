@@ -118,11 +118,11 @@ export function AppShell({ nav, title, children, footer, onTitle, role = 'studen
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <Brand onClick={() => { navigate('/'); setOpen(false) }} />
         <SideNav nav={nav} onNavigate={() => setOpen(false)} />
-        <div className="side-foot">
-          {user?.role === 'admin'
-            ? <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>→ Go to Student Portal</a>
-            : <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>→ Admin Panel</a>}
-        </div>
+        {user?.role === 'admin' && (
+          <div className="side-foot">
+            <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>→ Go to Student Portal</a>
+          </div>
+        )}
       </aside>
       <div className="main">
         <div className="topbar">

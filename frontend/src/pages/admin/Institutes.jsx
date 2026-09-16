@@ -17,6 +17,8 @@ export default function AdminInstitutes() {
   const [csvModal, setCsvModal] = useState(false)
   const [quotaVal, setQuotaVal] = useState('0')
   const [quotaSaving, setQuotaSaving] = useState(false)
+  const [importVal, setImportVal] = useState('0')
+  const [importSaving, setImportSaving] = useState(false)
   const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30, kind: 'coaching', aiDailyQuota: 0 })
   const [subForm, setSubForm] = useState({ name: '', email: '', password: '' })
   const [subCreds, setSubCreds] = useState(null)
@@ -37,6 +39,7 @@ export default function AdminInstitutes() {
       setStudents(st.students || [])
       setInvites(inv.invites || [])
       setQuotaVal(String(me.ai_daily_quota ?? 0))
+      setImportVal(String(me.ai_import_quota ?? 0))
     } catch (e) { toast(e.message, 'err') }
   }
 
@@ -89,6 +92,15 @@ export default function AdminInstitutes() {
     } catch (e) { toast(e.message, 'err') } finally { setQuotaSaving(false) }
   }
 
+  const saveImportQuota = async () => {
+    setImportSaving(true)
+    try {
+      await api.put(`/institutes/admin/institutes/${selected.institute.id}/import-quota`, { aiImportQuota: Math.round(Number(importVal)) || 0 })
+      toast(Math.round(Number(importVal)) > 0 ? `Import quota saved — ${importVal} papers/month (school self-serve)` : 'Import quota OFF — school PDF upload disabled', 'ok')
+      open(selected.institute)
+    } catch (e) { toast(e.message, 'err') } finally { setImportSaving(false) }
+  }
+
   const uploadCsv = async () => {
     if (!csv.trim()) return
     setBusy(true)
@@ -127,6 +139,22 @@ export default function AdminInstitutes() {
               <span className="chip">{i.invites} invites</span>
               <span className="chip">till {fmtDate(i.plan_until)}</span>
             </div>
+            {(i.ai_import_quota > 0 || i.pdf_used_this_month > 0 || i.pdf_pending_review > 0) && (
+              <div className="row mt" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {i.ai_import_quota > 0 ? (
+                  <span className="chip" style={{ fontWeight: 600 }}>
+                    📄 {i.pdf_used_this_month}/{i.ai_import_quota} imports
+                  </span>
+                ) : (
+                  <span className="chip">📄 import OFF</span>
+                )}
+                {i.pdf_pending_review > 0 ? (
+                  <Badge kind="amber">⏳ {i.pdf_pending_review} pending review</Badge>
+                ) : (
+                  <span className="chip">✓ {i.pdf_published_total} published</span>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -157,6 +185,51 @@ export default function AdminInstitutes() {
                 <button className="btn btn-ghost btn-sm" onClick={saveQuota} disabled={quotaSaving}>{quotaSaving ? 'Saving…' : 'Save quota'}</button>
               </div>
             </div>
+          </div>
+
+          <div className="card mb">
+            <div className="spread">
+              <div>
+                <b>📄 Monthly PDF import quota (school self-serve)</b>
+                <p className="tiny muted" style={{ marginTop: 4, maxWidth: 520 }}>
+                  Sub-admin apne khud ke exam papers (Class 8/9/10 unit tests, term papers, modules) PDF se import kar payega —
+                  har paper ~₹5–15 AI cost. 0 = upload disabled. Duplicate paper quota khata nahi hai.
+                  Recommended: school plan par 20–50/month.
+                </p>
+              </div>
+              <div className="row">
+                <input type="number" min="0" className="input" style={{ width: 110 }} value={importVal} onChange={(e) => setImportVal(e.target.value)} />
+                <button className="btn btn-ghost btn-sm" onClick={saveImportQuota} disabled={importSaving}>{importSaving ? 'Saving…' : 'Save quota'}</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card mb">
+            <div className="spread mb">
+              <b>📑 PDF Pipeline & Review queue</b>
+              <span className="chip">Monthly usage: {selected.stats.pdf_used_this_month}/{selected.stats.ai_import_quota || 'OFF'}</span>
+            </div>
+            <div className="grid grid-4 mb">
+              <div className="stat card"><span className="label">Imports this month</span><span className="value">{selected.stats.pdf_used_this_month}</span><span className="sub">quota {selected.stats.ai_import_quota || 'OFF'}</span></div>
+              <div className="stat card"><span className="label">Total imports</span><span className="value">{selected.stats.pdf_imports_total}</span></div>
+              <div className="stat card"><span className="label">Pending review</span><span className="value" style={{ color: selected.stats.pdf_pending_review > 0 ? 'var(--amber)' : undefined }}>{selected.stats.pdf_pending_review}</span><span className="sub">sub-admin approve karega</span></div>
+              <div className="stat card"><span className="label">Published to bank</span><span className="value">{selected.stats.pdf_published_total}</span><span className="sub">approved questions</span></div>
+            </div>
+            {selected.stats.pdf_recent?.length > 0 && (
+              <table className="tbl">
+                <thead><tr><th>Recent papers</th><th>Status</th><th>Questions</th><th>When</th></tr></thead>
+                <tbody>
+                  {selected.stats.pdf_recent.map((im) => (
+                    <tr key={im.id}>
+                      <td className="small">{im.filename}</td>
+                      <td><Badge kind={im.status === 'completed' ? 'green' : im.status === 'failed' ? 'red' : im.status === 'review' ? 'amber' : 'blue'}>{im.status}</Badge></td>
+                      <td>{im.questions_created ?? 0}</td>
+                      <td className="tiny">{fmtDate(im.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div className="card mb">

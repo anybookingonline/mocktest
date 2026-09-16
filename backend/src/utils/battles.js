@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { getEntitlements } from './addons.js'
 import { getConfig } from './aiService.js'
 import { awardPoints } from './points.js'
+import { visibilityInstId } from './visibility.js'
 
 // ---------------------------------------------------------------------------
 // 1v1 Quiz Battles (#6) — duels with friends on any exam, scored by the
@@ -61,20 +62,22 @@ async function aiQuestionFor(examId) {
 }
 
 // Draw a question: reuse existing bank questions (no AI cost); fall back to AI.
-async function drawQuestion(examId, usedIds) {
+// Institute isolation: instId > 0 -> global + own-institute only; 0 -> global only.
+async function drawQuestion(examId, usedIds, instId = 0) {
+  const vis = instId > 0 ? '(institute_id IS NULL OR institute_id = ?)' : 'institute_id IS NULL'
   const base = `SELECT id, qtype, question_text, options_json, correct_answer, difficulty, topic_id
-    FROM questions WHERE is_active = 1 AND exam_id = ?`
+    FROM questions WHERE is_active = 1 AND exam_id = ? AND ${vis}`
   let rows
   if (usedIds.length) {
     const marks = '?,'.repeat(usedIds.length).slice(0, -1)
-    rows = await db.prepare(`${base} AND id NOT IN (${marks}) ORDER BY RANDOM() LIMIT 1`).all(Number(examId), ...usedIds)
+    rows = await db.prepare(`${base} AND id NOT IN (${marks}) ORDER BY RANDOM() LIMIT 1`).all(Number(examId), ...(instId > 0 ? [instId] : []), ...usedIds)
   } else {
     // NOTE: never emit `NOT IN (NULL)` — in real Postgres that evaluates to
     // NULL and matches zero rows.
-    rows = await db.prepare(`${base} ORDER BY RANDOM() LIMIT 1`).all(Number(examId))
+    rows = await db.prepare(`${base} ORDER BY RANDOM() LIMIT 1`).all(Number(examId), ...(instId > 0 ? [instId] : []))
   }
   if (rows.length) return rows[0]
-  const any = await db.prepare(`${base} ORDER BY RANDOM() LIMIT 1`).all(Number(examId))
+  const any = await db.prepare(`${base} ORDER BY RANDOM() LIMIT 1`).all(Number(examId), ...(instId > 0 ? [instId] : []))
   if (any.length) return any[0]
   const ai = await aiQuestionFor(examId)
   return ai
@@ -144,7 +147,11 @@ async function beginRound(roomId, roundNo) {
   if (!room) return null
   if (roundNo > room.rounds) return finishRoom(room)
   const used = await db.prepare('SELECT question_id FROM battle_rounds WHERE room_id = ?').all(roomId)
-  const q = await drawQuestion(room.exam_id, used.map((r) => r.question_id))
+  // Room ke players me se kisi ek ka institute hi visibility scope hai (dono
+  // same institute ke hain ya global questions khelte hain — matchmaking par
+  // alag institute ke rooms bante hi nahi, kyunki dono global pool se draw karte hain).
+  const instId = await visibilityInstId(room.player1_id)
+  const q = await drawQuestion(room.exam_id, used.map((r) => r.question_id), instId)
   if (!q) {
     await db.prepare(`UPDATE battle_rooms SET status = 'finished', finished_at = to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?`).run(roomId)
     return null

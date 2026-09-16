@@ -3,15 +3,20 @@ import db from '../db.js'
 import { authRequired, platformOnly } from '../middleware/auth.js'
 import { aiLimiter } from '../middleware/rateLimit.js'
 import { generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
+import { visibilityInstId, visibilitySql } from '../utils/visibility.js'
 
 const router = express.Router()
 router.use(authRequired)
 
-export function buildQuestionPicker(config) {
+export function buildQuestionPicker(config, instId = 0) {
   // config: { examId, subjectIds[], chapterIds[], topicIds[], numQuestions, difficultyMix, excludeIds[], source, year }
   const base = []
   const bparams = []
   const badd = (cond, ...vals) => { base.push(cond); bparams.push(...vals) }
+  // Institute content isolation: global + own institute only (mimics visibilitySql
+  // but in '?'-placeholder style this builder uses).
+  if (instId > 0) { base.push('(institute_id IS NULL OR institute_id = ?)'); bparams.push(instId) }
+  else base.push('institute_id IS NULL')
   if (config.examId) badd('exam_id = ?', Number(config.examId))
   if (config.subjectIds?.length) badd(`subject_id IN (${config.subjectIds.map(() => '?').join(',')})`, ...config.subjectIds.map(Number))
   if (config.chapterIds?.length) badd(`chapter_id IN (${config.chapterIds.map(() => '?').join(',')})`, ...config.chapterIds.map(Number))
@@ -52,8 +57,12 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const test = await db.prepare('SELECT * FROM tests WHERE id = ?').get(req.params.id)
   if (!test) return res.status(404).json({ error: 'Test not found' })
+  // Institute-private questions stay hidden from other institutes even inside
+  // a shared test; each caller gets global + own-institute questions only.
+  const instId = await visibilityInstId(req.user.id)
+  const vis = instId > 0 ? '(q.institute_id IS NULL OR q.institute_id = ?)' : 'q.institute_id IS NULL'
   const rows = await db.prepare(`SELECT q.* FROM questions q JOIN test_questions tq ON tq.question_id = q.id
-    WHERE tq.test_id = ? AND q.is_active = 1 ORDER BY tq.position`).all(test.id)
+    WHERE tq.test_id = ? AND q.is_active = 1 AND ${vis} ORDER BY tq.position`).all(test.id, ...(instId > 0 ? [instId] : []))
   const questions = rows.map(q => ({
     id: q.id, qtype: q.qtype, question_text: q.question_text, options: JSON.parse(q.options_json || '[]'),
     correct_answer: q.correct_answer, explanation: q.explanation, difficulty: q.difficulty,
@@ -71,13 +80,16 @@ router.post('/', async (req, res) => {
   const config = b.config || {}
   const num = Number(config.numQuestions) || 0
   let picked = []
+  const instId = await visibilityInstId(req.user.id)
   if (num > 0) {
-    const { where, params } = buildQuestionPicker(config)
+    const { where, params } = buildQuestionPicker(config, instId)
     picked = await db.prepare(`SELECT * FROM questions WHERE ${where} ORDER BY RANDOM() LIMIT ${num}`).all(...params)
   } else if (b.questionIds?.length) {
     const ids = b.questionIds.map(Number)
     const marks = '?,'.repeat(ids.length).slice(0, -1)
-    picked = await db.prepare(`SELECT * FROM questions WHERE id IN (${marks})`).all(...ids)
+    // Direct id list: filter by visibility after fetch (server-side, not UI)
+    const fetched = await db.prepare(`SELECT * FROM questions WHERE id IN (${marks})`).all(...ids)
+    picked = fetched.filter((q) => !q.institute_id || Number(q.institute_id) === instId)
   }
   if (!picked.length) return res.status(400).json({ error: 'No questions found for the given configuration' })
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)
@@ -92,7 +104,12 @@ router.post('/', async (req, res) => {
 })
 
 // POST /api/tests/ai - generate full test with AI questions
-router.post('/ai', aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
+// Cost guard (docs/pricing-audit.md §2): one AI full-mock costs ~₹12 per 100
+// questions. Without an entitlement check any logged-in free user could burn
+// ~₹288/day of AI spend (5 generations / 5 min × ₹12) with zero revenue
+// attached. Now: platform-admin tool only — students never trigger paid
+// generation; they consume the questions already persisted in the bank.
+router.post('/ai', platformOnly, aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
   const b = req.body || {}
   if (!b.examId) return res.status(400).json({ error: 'examId required' })
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)
@@ -114,7 +131,7 @@ router.post('/ai', aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
     const results = await Promise.all(tasks)
     for (const qs of results) all.push(...qs)
     await persistQuestions(all, { exam, source: 'ai', sourceMeta: { generatedBy: 'admin', kind: config.kind || 'mock' } })
-    const ids = await db.prepare(`SELECT id FROM questions WHERE exam_id = ? AND source = 'ai' ORDER BY id DESC LIMIT ${num}`).all(exam.id)
+    const ids = await db.prepare(`SELECT id FROM questions WHERE exam_id = ? AND source = 'ai' AND institute_id IS NULL ORDER BY id DESC LIMIT ${num}`).all(exam.id)
     const title = b.title || `${exam.name} ${config.kind || 'Mock'} Test ${new Date().toLocaleDateString('en-IN')}`
     const r = await db.prepare(`INSERT INTO tests (exam_id, title, description, kind, config_json, created_by, is_active)
       VALUES (?,?,?,?,?,?,1)`).run(exam.id, title, b.description || 'AI generated full mock test', config.kind || 'full',

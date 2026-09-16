@@ -243,9 +243,13 @@ CREATE TABLE IF NOT EXISTS questions (
   content_hash TEXT UNIQUE,
   is_active INTEGER DEFAULT 1,
   usage_count INTEGER DEFAULT 0,
+  -- Institute content isolation (Phase 5): NULL = platform/curated global
+  -- question; set = institute-private (visible ONLY to that institute).
+  institute_id INTEGER REFERENCES institutes(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
   updated_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
 );
+CREATE INDEX IF NOT EXISTS idx_questions_institute ON questions(institute_id);
 
 CREATE INDEX IF NOT EXISTS idx_questions_exam ON questions(exam_id);
 CREATE INDEX IF NOT EXISTS idx_questions_subject ON questions(subject_id);
@@ -455,6 +459,11 @@ CREATE TABLE IF NOT EXISTS points_log (
 );
 CREATE INDEX IF NOT EXISTS idx_points_log_user ON points_log (user_id, created_at DESC);
 
+-- Institute content isolation: questions imported by a school/coaching are
+-- institute-private (institute_id set); platform/curated stay global (NULL).
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS institute_id INTEGER REFERENCES institutes(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_questions_institute ON questions(institute_id);
+
 -- White-label branding + B2B plan fields on institutes
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'coaching';
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'trial';
@@ -468,6 +477,49 @@ ALTER TABLE institutes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
 -- Per-institute daily AI quota (pilot loss guarantee): max AI doubts across ALL
 -- students of the institute per day. 0 = unlimited (default for paid plans).
 ALTER TABLE institutes ADD COLUMN IF NOT EXISTS ai_daily_quota INTEGER DEFAULT 0;
+-- Per-institute MONTHLY PDF import quota: how many exam-paper PDFs the
+-- institute's sub-admin may submit for AI extraction per calendar month.
+-- 0 = sub-admin upload disabled (platform admin imports on their behalf).
+-- ~₹5–15 AI cost per paper (Gemini Vision + DeepSeek structuring).
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS ai_import_quota INTEGER DEFAULT 0;
+-- Institute-sourced imports are tagged so quota accounting + review ownership
+-- stay scoped to the owning institute (platform imports keep NULL).
+ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS institute_id INTEGER REFERENCES institutes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_pdf_imports_inst ON pdf_imports(institute_id);
+-- 1 = extraction parked in the review queue (staging) instead of publishing
+-- straight to the shared question bank (institute self-serve imports).
+ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS review_required INTEGER DEFAULT 0;
+
+-- ---------------------------------------------------------------------------
+-- Phase 3: extracted-questions review queue. Institute (sub-admin) PDF imports
+-- land here first — AI extraction fills this table (status='pending'); only
+-- rows the sub-admin explicitly approves are written into the shared questions
+-- bank (question_id records the created row; duplicates are flagged up-front).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pdf_question_staging (
+  id SERIAL PRIMARY KEY,
+  import_id INTEGER NOT NULL REFERENCES pdf_imports(id) ON DELETE CASCADE,
+  institute_id INTEGER REFERENCES institutes(id) ON DELETE SET NULL,
+  exam_id INTEGER REFERENCES exams(id) ON DELETE CASCADE,
+  subject TEXT, chapter TEXT, topic TEXT,
+  qtype TEXT DEFAULT 'single',
+  question_text TEXT NOT NULL,
+  options_json TEXT DEFAULT '[]',
+  correct_answer TEXT,
+  explanation TEXT,
+  difficulty TEXT DEFAULT 'medium',
+  marks NUMERIC DEFAULT 4,
+  negative_marks NUMERIC DEFAULT 1,
+  estimated_time INTEGER DEFAULT 90,
+  tags_json TEXT DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | rejected
+  duplicate INTEGER DEFAULT 0,              -- same content already in the bank
+  content_hash TEXT,
+  question_id INTEGER,                      -- questions.id after approval
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  reviewed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pqs_import ON pdf_question_staging(import_id);
 
 -- Institute invite codes: students register with the code and are auto-linked
 -- to the institute (sub-admin = users row with role='admin' + institute_id).

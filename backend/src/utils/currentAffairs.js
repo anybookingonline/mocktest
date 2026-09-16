@@ -28,8 +28,10 @@ export async function getOrCreateDailyQuiz(exam) {
   const existing = await db.prepare(`SELECT id FROM tests WHERE kind = 'current_affairs' AND description = ? LIMIT 1`)
     .get(`ca:${exam.id}:${day}`)
   if (existing) {
+    // CA quizzes are AI-generated (global) — an institute question can never
+    // land in them, but the filter keeps the invariant airtight anyway.
     const rows = await db.prepare(`SELECT q.* FROM questions q JOIN test_questions tq ON tq.question_id = q.id
-      WHERE tq.test_id = ? ORDER BY tq.position`).all(existing.id)
+      WHERE tq.test_id = ? AND q.institute_id IS NULL ORDER BY tq.position`).all(existing.id)
     if (rows.length) return { testId: existing.id, questions: rows.map(normalizeQ), cached: true }
   }
   // AI generates ONE fresh set per exam per day. Topic steers the news domain;

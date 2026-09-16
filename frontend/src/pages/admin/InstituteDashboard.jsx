@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AdminLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, Modal, useToast, fmtDate } from '../../components/ui.jsx'
@@ -14,6 +14,16 @@ export default function InstituteDashboard() {
   const [csvModal, setCsvModal] = useState(false)
   const [csv, setCsv] = useState('')
   const [busy, setBusy] = useState(false)
+  // School self-serve PDF import (monthly quota-gated, server enforces)
+  const [pdf, setPdf] = useState(null) // { imports, quota, usedThisMonth }
+  const [pdfExams, setPdfExams] = useState([])
+  const [pdfExamId, setPdfExamId] = useState('')
+  const [pdfFile, setPdfFile] = useState(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const pdfFileRef = useRef(null)
+  // Phase 3: extracted-questions review queue
+  const [review, setReview] = useState(null) // { import, questions }
+  const [reviewBusy, setReviewBusy] = useState(false)
 
   const load = () => {
     api.get('/institutes/me').then((d) => {
@@ -28,8 +38,18 @@ export default function InstituteDashboard() {
     }).catch((e) => toast(e.message, 'err'))
     api.get('/institutes/me/students').then((d) => setStudents(d.students || [])).catch(() => {})
     api.get('/institutes/me/invites').then((d) => setInvites(d.invites || [])).catch(() => {})
+    api.get('/institutes/me/pdf-imports').then(setPdf).catch(() => {})
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    api.get('/exams').then((d) => setPdfExams(d.exams || [])).catch(() => {})
+  }, [])
+  // Poll import status while anything is queued/processing
+  useEffect(() => {
+    if (!pdf?.imports?.some((i) => i.status === 'processing' || i.status === 'queued')) return
+    const t = setInterval(() => api.get('/institutes/me/pdf-imports').then(setPdf).catch(() => {}), 6000)
+    return () => clearInterval(t)
+  }, [pdf])
 
   const newInvite = async () => {
     setBusy(true)
@@ -47,6 +67,38 @@ export default function InstituteDashboard() {
       toast('Branding saved — students ko aapke naam/colors se dikhega', 'ok')
       load()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  const uploadPdf = async () => {
+    if (!pdfFile) return toast('Choose a PDF file', 'err')
+    if (!pdfExamId) return toast('Select the exam/class this paper belongs to', 'err')
+    setPdfBusy(true)
+    try {
+      const d = await api.upload('/institutes/me/pdf-import', pdfFile, { examId: pdfExamId })
+      toast(d.reused ? (d.message || 'Paper already imported') : (d.message || 'Upload accepted — processing'), 'ok')
+      setPdfFile(null)
+      if (pdfFileRef.current) pdfFileRef.current.value = ''
+      api.get('/institutes/me/pdf-imports').then(setPdf).catch(() => {})
+    } catch (e) { toast(e.message, 'err') } finally { setPdfBusy(false) }
+  }
+
+  // Review queue actions: approve/reject selected (or all pending) staged questions
+  const doReview = async (importId, action, ids = []) => {
+    setReviewBusy(true)
+    try {
+      const d = await api.post(`/institutes/me/pdf-imports/${importId}/review`, { action, ids })
+      toast(d.message || 'Done', 'ok')
+      const fresh = await api.get(`/institutes/me/pdf-imports/${importId}/questions`)
+      setReview(fresh)
+      api.get('/institutes/me/pdf-imports').then(setPdf).catch(() => {})
+    } catch (e) { toast(e.message, 'err') } finally { setReviewBusy(false) }
+  }
+
+  const openReview = async (importId) => {
+    try {
+      const d = await api.get(`/institutes/me/pdf-imports/${importId}/questions`)
+      setReview(d)
+    } catch (e) { toast(e.message, 'err') }
   }
 
   const uploadCsv = async () => {
@@ -107,6 +159,108 @@ export default function InstituteDashboard() {
             <button className="btn btn-ghost btn-sm" onClick={() => setCsvModal(true)}>⬆ Import</button>
           </div>
         </div>
+      </div>
+
+      <div className="card mt">
+        <div className="spread mb">
+          <b>📄 Apne exam papers import karo (PDF → Question Bank)</b>
+          {pdf && (
+            <span className="chip">{pdf.quota ? `Monthly quota: ${pdf.usedThisMonth}/${pdf.quota} papers` : 'Upload disabled — platform admin se quota activate karwaye'}</span>
+          )}
+        </div>
+        <p className="tiny muted mb">
+          Apne Class/Subject ke unit tests, term papers ya coaching modules upload karo — AI (Gemini Vision)
+          scanned/low-quality PDFs se bhi questions nikal leta hai aur practice/mock/battles sab me use hone lagte hain.
+          Same paper dobara upload karne par quota nahi lagta (dedup).
+        </p>
+        {pdf?.quota ? (
+          <div className="row mb" style={{ flexWrap: 'wrap', gap: 10 }}>
+            <select className="select" style={{ maxWidth: 260 }} value={pdfExamId} onChange={(e) => setPdfExamId(e.target.value)}>
+              <option value="">Exam/Class chuno…</option>
+              {pdfExams.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <input ref={pdfFileRef} type="file" accept="application/pdf" className="input" style={{ maxWidth: 280 }} onChange={(e) => setPdfFile(e.target.files?.[0] || null)} />
+            <button className="btn btn-primary btn-sm" onClick={uploadPdf} disabled={pdfBusy}>{pdfBusy ? 'Uploading…' : '⬆ Import paper'}</button>
+          </div>
+        ) : null}
+        {pdf?.imports?.length > 0 && (
+          <table className="tbl">
+            <thead><tr><th>File</th><th>Status</th><th>Questions</th><th>When</th><th></th></tr></thead>
+            <tbody>
+              {pdf.imports.map((im) => {
+                const pending = pdf.pendingByImport?.[im.id] || 0
+                return (
+                  <tr key={im.id}>
+                    <td className="small">{im.filename}</td>
+                    <td>
+                      <Badge kind={pending > 0 ? 'amber' : im.status === 'completed' ? 'green' : im.status === 'failed' ? 'red' : 'amber'}>
+                        {pending > 0 ? `review (${pending})` : im.status}
+                      </Badge>
+                      {im.error ? <span className="tiny muted" style={{ marginLeft: 6 }}>{String(im.error).slice(0, 80)}</span> : null}
+                    </td>
+                    <td>{im.questions_created ?? 0}</td>
+                    <td className="tiny">{fmtDate(im.created_at)}</td>
+                    <td>
+                      {pending > 0 && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => openReview(im.id)}>🔎 Review</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+
+        {/* Phase 3: extracted-questions review queue */}
+        {review && (
+          <div className="card mt" style={{ background: 'var(--bg2)' }}>
+            <div className="spread mb">
+              <b>🔎 Review queue — {review.import?.filename}</b>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReview(null)}>✕ Close</button>
+            </div>
+            <p className="tiny muted mb">
+              AI ne ye questions nikale hain. Check karo — galat/unreadable wale reject karo,
+              sahi wale approve karke exam bank me publish karo. Sirf approved questions students ko dikhenge.
+            </p>
+            <div className="row mb" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" disabled={reviewBusy}
+                onClick={() => doReview(review.import.id, 'approve')}>
+                ✅ Approve all (non-duplicate)
+              </button>
+              <button className="btn btn-ghost btn-sm" disabled={reviewBusy}
+                onClick={() => doReview(review.import.id, 'reject')}>
+                🗑 Reject all pending
+              </button>
+            </div>
+            {review.questions?.length === 0 && <p className="tiny muted">Is import ke liye koi staged question nahi hai.</p>}
+            {(review.questions || []).map((q) => (
+              <div key={q.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div className="spread">
+                  <span className="small" style={{ flex: 1 }}>
+                    <b>Q{q.id}.</b> {String(q.question_text || '').slice(0, 180)}{String(q.question_text || '').length > 180 ? '…' : ''}
+                  </span>
+                  <span className="row" style={{ gap: 6 }}>
+                    {q.duplicate ? <Badge kind="gray">duplicate</Badge> : null}
+                    <Badge kind={q.status === 'approved' ? 'green' : q.status === 'rejected' ? 'red' : 'amber'}>{q.status}</Badge>
+                    {q.status === 'pending' && (
+                      <>
+                        <button className="btn btn-ghost btn-sm" disabled={reviewBusy}
+                          onClick={() => doReview(review.import.id, 'approve', [q.id])}>✓</button>
+                        <button className="btn btn-ghost btn-sm" disabled={reviewBusy}
+                          onClick={() => doReview(review.import.id, 'reject', [q.id])}>✕</button>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="tiny muted" style={{ marginTop: 4 }}>
+                  {q.subject ? `${q.subject}` : '—'}{q.chapter ? ` › ${q.chapter}` : ''}{q.topic ? ` › ${q.topic}` : ''}
+                  {q.correct_answer ? ` · Ans: ${String(q.correct_answer).slice(0, 30)}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card mt">

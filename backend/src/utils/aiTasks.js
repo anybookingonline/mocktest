@@ -1,5 +1,6 @@
 import db from '../db.js'
 import { aiChat, visionExtract, hashContent } from './aiService.js'
+import { scopedContentHash } from './visibility.js'
 
 const QUESTION_SCHEMA = `A JSON object with a "questions" array. Each question MUST have exactly:
 {
@@ -194,4 +195,136 @@ export async function persistQuestions(list, { exam, source = 'ai', sourceMeta =
     if (r.changes > 0) created.push(q)
   }
   return created.length
+}
+
+// ---------------------------------------------------------------------------
+// Review queue (Phase 3): park extracted questions in pdf_question_staging
+// instead of publishing them to the shared bank. The institute sub-admin then
+// approves/rejects each row (or bulk) from their dashboard; only approved rows
+// are written to `questions`.
+// ---------------------------------------------------------------------------
+
+// Fill the staging table from a structured extraction. Returns {staged, dupes}.
+// The duplicate flag is computed up-front (content hash match) so the reviewer
+// immediately sees "ye question bank me already hai" without opening anything.
+// Dedup is SCOPE-AWARE: an institute's rows are hashed with its id baked in
+// (scopedContentHash), so School B uploading the same paper as School A gets
+// its OWN independent set instead of silently inheriting A's questions. A dup
+// flag for an institute row therefore only fires against global/curated copies
+// or that same institute's own earlier copies.
+export async function stageExtractedQuestions(list, { importId, instituteId, examId }) {
+  // Existing hashes this row could legitimately collide with, for this exam —
+  // one query instead of per-row lookups.
+  const existing = new Set(
+    (instituteId
+      ? await db.prepare('SELECT content_hash FROM questions WHERE exam_id = ? AND (institute_id IS NULL OR institute_id = ?)').all(Number(examId), Number(instituteId))
+      : await db.prepare('SELECT content_hash FROM questions WHERE exam_id = ? AND institute_id IS NULL').all(Number(examId))
+    ).map((r) => r.content_hash)
+  )
+  let staged = 0, dupes = 0
+  for (const q of list) {
+    if (!q.question) continue
+    const opts = Array.isArray(q.options) ? q.options : []
+    const hash = scopedContentHash(JSON.stringify({ question: q.question, options: opts, answer: q.correctAnswer }), instituteId)
+    const isDup = existing.has(hash)
+    await db.prepare(`INSERT INTO pdf_question_staging
+      (import_id, institute_id, exam_id, subject, chapter, topic, qtype, question_text,
+       options_json, correct_answer, explanation, difficulty, marks, negative_marks,
+       estimated_time, tags_json, status, duplicate, content_hash)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?, ?)`)
+      .run(
+        Number(importId), instituteId ? Number(instituteId) : null, Number(examId) || null,
+        q.subject || null, q.chapter || null, q.topic || null,
+        q.type || 'single', String(q.question).trim(),
+        JSON.stringify(opts), String(q.correctAnswer ?? ''), q.explanation || '',
+        q.difficulty || 'medium', Number(q.marks) || 4,
+        q.negativeMarks != null ? Number(q.negativeMarks) : 1,
+        Number(q.estimatedTime) || 90, JSON.stringify(q.tags || []),
+        isDup ? 1 : 0, hash
+      )
+    if (isDup) dupes += 1; else staged += 1
+  }
+  return { staged, dupes }
+}
+
+// Approve staged rows: write them into the shared question bank (same schema
+// mapping as persistQuestions). Rows may belong to different imports; every
+// row is re-scoped by its own stored ids. The content_hash stored at staging
+// time is ALREADY institute-scoped (scopedContentHash), so the UNIQUE dedup
+// constraint can never block School B from publishing its own copy of a paper
+// School A also imported — B's hashes differ from A's by construction.
+export async function approveStagedQuestions(ids) {
+  const clean = (ids || []).map(Number).filter(Boolean)
+  if (!clean.length) return { approved: 0, created: 0 }
+  const rows = await db.prepare(
+    `SELECT * FROM pdf_question_staging WHERE status = 'pending' AND id IN (${clean.map(() => '?').join(',')})`
+  ).all(...clean)
+  if (!rows.length) return { approved: 0, created: 0 }
+
+  // Group by exam so syllabus mapping is computed once per exam.
+  const byExam = new Map()
+  for (const row of rows) {
+    if (!byExam.has(row.exam_id)) byExam.set(row.exam_id, [])
+    byExam.get(row.exam_id).push(row)
+  }
+
+  let created = 0
+  for (const [examId, group] of byExam) {
+    const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(Number(examId))
+    if (!exam) continue
+    const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ?').all(Number(examId))
+    const chapters = await db.prepare('SELECT * FROM chapters WHERE exam_id = ?').all(Number(examId))
+    const topics = await db.prepare('SELECT * FROM topics WHERE exam_id = ?').all(Number(examId))
+    const getOrCreate = async (tableName, cache, parentCol, parentId, name) => {
+      const found = cache.find((x) => x.name.toLowerCase() === String(name).toLowerCase() && (parentId == null || x[parentCol] === parentId))
+      if (found) return found.id
+      const cols = tableName === 'subjects' ? 'exam_id, name, sort_order' : tableName === 'chapters' ? 'subject_id, exam_id, name, sort_order' : 'chapter_id, exam_id, name, sort_order'
+      const marks = tableName === 'subjects' ? '?, ?, 0' : '?, ?, ?, 0'
+      const vals = tableName === 'subjects' ? [Number(examId), name] : tableName === 'chapters' ? [parentId, Number(examId), name] : [parentId, Number(examId), name]
+      const r = await db.prepare(`INSERT INTO ${tableName} (${cols}) VALUES (${marks})`).run(...vals)
+      const id = Number(r.lastInsertRowid)
+      cache.push({ id, name, [parentCol]: parentId })
+      return id
+    }
+
+    const insert = db.prepare(`INSERT INTO questions
+      (exam_id, subject_id, chapter_id, topic_id, qtype, question_text, options_json, correct_answer,
+       explanation, difficulty, marks, negative_marks, estimated_time, tags_json, source, source_meta_json, content_hash, institute_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT (content_hash) DO NOTHING RETURNING id`)
+
+    for (const row of group) {
+      let subjectId = null, chapterId = null, topicId = null
+      if (row.subject) subjectId = await getOrCreate('subjects', subjects, null, null, row.subject)
+      if (row.chapter) chapterId = await getOrCreate('chapters', chapters, 'subject_id', subjectId, row.chapter)
+      if (row.topic) topicId = await getOrCreate('topics', topics, 'chapter_id', chapterId, row.topic)
+      const r = await insert.run(
+        Number(examId), subjectId, chapterId, topicId,
+        row.qtype || 'single', row.question_text,
+        row.options_json || '[]', row.correct_answer || '',
+        row.explanation || '', row.difficulty || 'medium',
+        Number(row.marks) || 4, Number(row.negative_marks ?? 1),
+        Number(row.estimated_time) || 90, row.tags_json || '[]',
+        'pdf', JSON.stringify({ stagedId: row.id, importId: row.import_id, institute: row.institute_id || null }),
+        row.content_hash,
+        row.institute_id ? Number(row.institute_id) : null
+      )
+      const qid = r.lastInsertRowid || null
+      await db.prepare(`UPDATE pdf_question_staging SET status = 'approved', reviewed_at = to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), question_id = ? WHERE id = ?`)
+        .run(qid, row.id)
+      if (r.changes > 0) created += 1
+    }
+  }
+  return { approved: rows.length, created }
+}
+
+// Reject staged rows (sub-admin decided these are wrong / unreadable / off-topic).
+export async function rejectStagedQuestions(ids) {
+  const clean = (ids || []).map(Number).filter(Boolean)
+  if (!clean.length) return { rejected: 0 }
+  const r = await db.prepare(
+    `UPDATE pdf_question_staging SET status = 'rejected', reviewed_at = to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+     WHERE status = 'pending' AND id IN (${clean.map(() => '?').join(',')})`
+  ).run(...clean)
+  return { rejected: r.changes || 0 }
 }

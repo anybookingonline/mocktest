@@ -2,6 +2,7 @@ import express from 'express'
 import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { cacheGet, cacheSet, cacheDel } from '../utils/redis.js'
+import { visibilityInstId } from '../utils/visibility.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -22,7 +23,12 @@ router.get('/:id', async (req, res) => {
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ? ORDER BY sort_order').all(exam.id)
   const chapters = await db.prepare('SELECT * FROM chapters WHERE exam_id = ? ORDER BY sort_order').all(exam.id)
   const topics = await db.prepare('SELECT * FROM topics WHERE exam_id = ? ORDER BY sort_order').all(exam.id)
-  const counts = await db.prepare('SELECT subject_id, chapter_id, topic_id, COUNT(*) c FROM questions WHERE exam_id = ? GROUP BY subject_id, chapter_id, topic_id').all(exam.id)
+  // Syllabus counts respect institute isolation: student counts global + own
+  // institute questions; admin UI counts global only (admin list saaf curated).
+  const instId = req.user?.role === 'admin' && !req.user?.institute_id ? 0 : await visibilityInstId(req.user.id)
+  const vis = instId > 0 ? '(institute_id IS NULL OR institute_id = ?)' : 'institute_id IS NULL'
+  const counts = await db.prepare(`SELECT subject_id, chapter_id, topic_id, COUNT(*) c FROM questions
+    WHERE exam_id = ? AND ${vis} GROUP BY subject_id, chapter_id, topic_id`).all(exam.id, ...(instId > 0 ? [instId] : []))
   res.json({ exam, subjects, chapters, topics, counts })
 })
 
@@ -32,7 +38,8 @@ router.get('/:id/syllabus', async (req, res) => {
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ? ORDER BY sort_order').all(examId)
   const chapters = await db.prepare('SELECT * FROM chapters WHERE exam_id = ? ORDER BY sort_order').all(examId)
   const topics = await db.prepare('SELECT * FROM topics WHERE exam_id = ? ORDER BY sort_order').all(examId)
-  const counts = await db.prepare('SELECT subject_id, chapter_id, topic_id, COUNT(*) c FROM questions WHERE exam_id = ? GROUP BY subject_id, chapter_id, topic_id').all(examId)
+  const counts = await db.prepare(`SELECT subject_id, chapter_id, topic_id, COUNT(*) c FROM questions
+    WHERE exam_id = ? AND institute_id IS NULL GROUP BY subject_id, chapter_id, topic_id`).all(examId)
   const bySubject = subjects.map(s => ({
     ...s,
     chapters: chapters.filter(c => c.subject_id === s.id).map(c => ({

@@ -272,7 +272,8 @@ export default function Retention() {
             <li>Keep doubts & AI explanations</li>
             <li>Keep bookmarks & analytics</li>
             <li>🔥 AI Focus Areas + 🔁 AI Revision unlocked</li>
-            <li>⚔️ Unlimited Quiz Battles</li>
+            <li>⚔️ Unlimited Quiz Battles <span className="tiny muted">(free plan: 3/day)</span></li>
+            <li>💬 Unlimited AI Tutor doubts <span className="tiny muted">(free plan: 15/day)</span></li>
           </ul>
           <GatewayPicker />
           {plan && <BuyButtons planId="retention_1y" active={active} />}

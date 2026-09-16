@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 import { api } from '../../api/client.js'
 import { Badge, Empty, Modal, useToast, fmtDate, fmtDuration } from '../../components/ui.jsx'
 
@@ -9,6 +10,11 @@ const KIND_LABEL = { mock: 'Mock', chapter: 'Chapter', topic: 'Topic', adaptive:
 export default function Tests() {
   const nav = useNavigate()
   const toast = useToast()
+  const { user } = useAuth()
+  // AI Full Mock generation is a platform-admin tool (~₹12/100 questions of
+  // AI cost per generation). Students see the regular test list only — the
+  // backend enforces the same rule server-side (platformOnly).
+  const isAdmin = user?.role === 'admin'
   const [tests, setTests] = useState([])
   const [exams, setExams] = useState([])
   const [examId, setExamId] = useState('')
@@ -58,7 +64,7 @@ export default function Tests() {
             <option value="">All exams</option>
             {exams.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <button className="btn btn-accent" onClick={() => setAiModal(true)}>✨ Generate AI Full Mock</button>
+          {isAdmin && <button className="btn btn-accent" onClick={() => setAiModal(true)}>✨ Generate AI Full Mock</button>}
         </div>
       </div>
 

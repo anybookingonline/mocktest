@@ -1,6 +1,7 @@
 import express from 'express'
 import db from '../db.js'
 import { authRequired, platformOnly } from '../middleware/auth.js'
+import { visibilityInstId, visibilitySql } from '../utils/visibility.js'
 
 const router = express.Router()
 router.use(authRequired)
@@ -18,10 +19,17 @@ async function qView(q, userId) {
 }
 
 // GET /api/questions?examId=&subjectId=&chapterId=&topicId=&difficulty=&source=&limit=&offset=&q=&qtype=&year=
+// Institute isolation: students see global questions + their own institute's;
+// platform-admin Question Bank sees only curated/global (visibilitySqlAdmin).
 router.get('/', async (req, res) => {
   const { examId, subjectId, chapterId, topicId, difficulty, source, qtype, year, q, limit = 50, offset = 0, sort = 'new' } = req.query
   const where = []
   const params = []
+  const vis = req.user?.role === 'admin' && !req.user?.institute_id
+    ? { sql: ' AND institute_id IS NULL', params: [] }
+    : visibilitySql(await visibilityInstId(req.user.id), params.length + 1)
+  where.push(vis.sql.slice(4))
+  params.push(...vis.params)
   if (examId) { where.push(`exam_id = $${params.length + 1}`); params.push(Number(examId)) }
   if (subjectId) { where.push(`subject_id = $${params.length + 1}`); params.push(Number(subjectId)) }
   if (chapterId) { where.push(`chapter_id = $${params.length + 1}`); params.push(Number(chapterId)) }
@@ -44,6 +52,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id)
   if (!q) return res.status(404).json({ error: 'Question not found' })
+  // Institute-private question: only same-institute users may fetch it
+  if (q.institute_id) {
+    const instId = await visibilityInstId(req.user.id)
+    if (Number(q.institute_id) !== instId) return res.status(404).json({ error: 'Question not found' })
+  }
   await db.prepare('UPDATE questions SET usage_count = usage_count + 1 WHERE id = ?').run(q.id)
   res.json({ question: await qView(q, req.user.id) })
 })
@@ -98,7 +111,10 @@ router.post('/:id/toggle-bookmark', async (req, res) => {
 
 // GET /api/bookmarks
 router.get('/bookmarks/list', async (req, res) => {
-  const rows = await db.prepare(`SELECT q.* FROM questions q JOIN bookmarks b ON b.question_id = q.id WHERE b.user_id = ? ORDER BY b.created_at DESC`).all(req.user.id)
+  const instId = await visibilityInstId(req.user.id)
+  const vis = visibilitySql(instId, 2)
+  const rows = await db.prepare(`SELECT q.* FROM questions q JOIN bookmarks b ON b.question_id = q.id
+    WHERE b.user_id = $1${vis.sql} ORDER BY b.created_at DESC`).all(req.user.id, ...vis.params)
   const questions = []
   for (const r of rows) questions.push(await qView(r, req.user.id))
   res.json({ questions })
