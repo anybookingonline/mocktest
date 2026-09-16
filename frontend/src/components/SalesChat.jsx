@@ -1,14 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useBranding } from '../context/BrandingContext.jsx'
 
 // ---------------------------------------------------------------------------
 // Public sales-support chat bubble for the marketing site (Landing + Schools).
 // Floats bottom-right; talks to /api/marketing/chat (rate-limited, no auth).
 // Mirrors the visitor's language, never invents prices (server injects facts).
+// White-label: the header name follows the resolved branding (platform name
+// via Settings, or the institute's branding on their domain / ?sch= invite).
 // ---------------------------------------------------------------------------
 
 const GREETING = { role: 'assistant', content: 'Namaste! 👋 Main aapki kaise help kar sakta hoon — fees, free trial, coupon codes, ya school ke liye plan?', quick: ['Fees kitni hai?', 'Free trial?', 'School/coaching plan?'] }
 
 export default function SalesChat() {
+  const { platformName } = useBranding()
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState([GREETING])
   const [input, setInput] = useState('')
@@ -74,7 +78,7 @@ export default function SalesChat() {
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border, #273049)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, rgba(99,102,241,.15), rgba(139,92,246,.15))' }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Aisepadho Helper</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{platformName || 'Aisepadho'} Helper</div>
               <div className="tiny muted" style={{ fontSize: 11 }}>Sales & support · online</div>
             </div>
             <button onClick={() => setOpen(false)} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted, #94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>

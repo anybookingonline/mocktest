@@ -245,11 +245,13 @@ CREATE TABLE IF NOT EXISTS questions (
   usage_count INTEGER DEFAULT 0,
   -- Institute content isolation (Phase 5): NULL = platform/curated global
   -- question; set = institute-private (visible ONLY to that institute).
-  institute_id INTEGER REFERENCES institutes(id) ON DELETE CASCADE,
+  -- NOTE: defined as a bare column here (no FK). The FK is added by the ALTER
+  -- below, AFTER the institutes table exists — a forward FK reference from
+  -- questions (declared before institutes) would break fresh-DB initialization.
+  institute_id INTEGER,
   created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
   updated_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
 );
-CREATE INDEX IF NOT EXISTS idx_questions_institute ON questions(institute_id);
 
 CREATE INDEX IF NOT EXISTS idx_questions_exam ON questions(exam_id);
 CREATE INDEX IF NOT EXISTS idx_questions_subject ON questions(subject_id);
@@ -461,7 +463,11 @@ CREATE INDEX IF NOT EXISTS idx_points_log_user ON points_log (user_id, created_a
 
 -- Institute content isolation: questions imported by a school/coaching are
 -- institute-private (institute_id set); platform/curated stay global (NULL).
-ALTER TABLE questions ADD COLUMN IF NOT EXISTS institute_id INTEGER REFERENCES institutes(id) ON DELETE CASCADE;
+-- This ALTER is the single source of truth for the column + index (fresh DBs
+-- AND old DBs that predate isolation both get the column here). The FK is
+-- added idempotently in initSchema() after this script (named constraint +
+-- "already exists" tolerance) so restarts never pile up duplicate constraints.
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS institute_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_questions_institute ON questions(institute_id);
 
 -- White-label branding + B2B plan fields on institutes
@@ -678,6 +684,15 @@ export async function initSchema() {
   const client = await pool.connect()
   try {
     await client.query(SCHEMA_SQL)
+    // FK for questions.institute_id — added here (not inside SCHEMA_SQL) with a
+    // fixed name and "already exists" tolerance: idempotent across restarts and
+    // safe on both fresh DBs and DBs that predate the isolation column.
+    try {
+      await client.query(`ALTER TABLE questions ADD CONSTRAINT questions_institute_fk
+        FOREIGN KEY (institute_id) REFERENCES institutes(id) ON DELETE CASCADE`)
+    } catch (e) {
+      if (!/already exists/i.test(String(e.message))) throw e
+    }
     await client.query(`INSERT INTO schema_meta (key, value) VALUES ('version', '2.5.0') ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
   } finally {
     client.release()

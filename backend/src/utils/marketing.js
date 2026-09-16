@@ -108,8 +108,9 @@ export async function salesChat({ messages = [] } = {}) {
       await db.prepare(`INSERT INTO ai_logs (action, provider, model, status)
         VALUES ('sales_chat', 'fallback', 'rules', 'ok')`).run()
     } catch { /* non-fatal */ }
+    const brand = (await getConfig('branding.platformName', 'Aisepadho')) || 'Aisepadho'
     return {
-      reply: hit ? hit.msg : 'Main Aisepadho ka sales helper hoon! Fees, free trial, coupon codes, 1v1 battles, groups ya school plans — kuch bhi pucho. 😊',
+      reply: hit ? hit.msg : `Main ${brand} ka sales helper hoon! Fees, free trial, coupon codes, 1v1 battles, groups ya school plans — kuch bhi pucho. 😊`,
       quick: hit?.quick || ['Fees kitni hai?', 'Free trial?', 'School plan?'],
       escalate: Boolean(hit?.escalate)
     }
