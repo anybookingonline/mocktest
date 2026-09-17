@@ -58,6 +58,36 @@ hai). Matlab:
 chalta hai — 1–2 min ke liye CPU spike aayega. Ye transient hai; app container
 me 1+ core rehne se deploy dheema nahi hoga.
 
+### Software versions — kya install hoga (exact)
+
+| Component | Version | Kahan aata hai |
+|---|---|---|
+| **Node.js** | **20 LTS** (app `>=18` support karta hai; 20 LTS stable + fast) | Coolify app container base image / nvm on host |
+| **PostgreSQL** | **16** (Coolify resource default bhi 16 hi hai; 15+ chalega) | Coolify New Resource → PostgreSQL |
+| **Coolify** | 4.x latest stable (`curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`) | already installed aapke VPS par |
+| **npm** | 10.x (Node 20 ke saath bundled) | Node ke saath |
+| **Redis** | ❌ is app ke liye nahi (cache/rate-limit Upstash REST client hai; local Redis se connect hi nahi hota) | — |
+| **Dusre apps ke liye Redis** | 7.x, 0.25–0.5 core / 256–512 MB (agar koi doosri app Redis maange) | Coolify New Resource → Redis |
+
+Code me koi alag version pin nahi karna — `package.json` engines `>=18` hai aur
+build/start commands upar wale hi hain.
+
+### Database choice: Supabase ya VPS Postgres?
+
+**VPS Postgres (Coolify) recommended.** Abhi ka DB **Supabase-hosted Postgres
+hai** — engine same hai (dono PostgreSQL), sirf hosting alag. Aapke case me:
+
+- **Abhi 0 users hain** → data migrate karne ki zaroorat nahi, naya VPS
+  Postgres seedhe seed schema se shuru hoga (`initSchema` khud bana dega)
+- **Cost**: Supabase free-tier limits/proyekat pause vs VPS par included
+- **Control**: backups, `pg_dump`, extensions — sab aapke machine par
+- **Latency**: app ↔ DB same-host internal network (ms-level) vs internet round-trip
+- **Sirf ek cheez yaad rakho**: Coolify me Postgres ke **scheduled backups ON**
+  karna (checklist me hai) — self-hosted ka matlab backup responsibility bhi aapki
+
+Supabase tabhi rakhna jab managed backups/auth chahiye ho — par app apna auth
+khud karta hai, to wo wajah bhi nahi bachi.
+
 ### Coolify setup steps
 
 1. **Postgres resource** banao (Coolify → New Resource → PostgreSQL).
@@ -80,10 +110,46 @@ me 1+ core rehne se deploy dheema nahi hoga.
 | `FRONTEND_URL` | `https://<aapka-domain>` |
 | `BACKEND_URL` | `https://<aapka-domain>` (single-origin) |
 | `B2_KEY_ID` / `B2_APP_KEY` / `B2_BUCKET` / `B2_ENDPOINT` | Backblaze wahi jo abhi hain |
+| `RESEND_API_KEY` | Transactional email (password reset, email verification, payment receipts + invoices) — resend.com se free key (3,000/month free). Admin → Settings → Email card se bhi set ho sakta hai |
+| `EMAIL_FROM` | e.g. `Aisepadho <noreply@aisepadho.com>` — Resend me aapka domain verified hona chahiye |
 | `TELEGRAM_BOT_TOKEN` | (optional — Admin → AI Config se bhi set hota hai) |
 
 **Note:** AI keys (DeepSeek/Gemini), Razorpay, Gravity — ye sab DB me `ai_configs`
 table me jaate hain, env ki zaroorat nahi. Step 3 me migrate hongi.
+
+---
+
+### Redis aur AI caching — asli sach
+
+**AI responses ka cache pehle se built hai (Postgres me).** Har AI call se pehle
+`ai_cache` table check hoti hai (same question/explanation = cache hit = **zero AI
+cost**), TTL admin panel se tune hota hai (`ai.cacheTtlDays`, default 30 din).
+Hit-rate `ai_logs` me `provider='cache'` rows se dikhta hai. Isliye AI call
+bachane ke liye Redis ki **koi zaroorat nahi** — kaam already ho raha hai.
+
+Local Redis container (Coolify) is app ke liye **dead weight hai** kyunki app ka
+cache client Upstash REST (HTTP) hai, Redis wire protocol nahi bolta. Redis tab
+jab add karna: (a) 2+ app instances chalao (shared rate-limit/cache), ya (b)
+koi doosri app maange. Do instances par `utils/redis.js` me standard redis
+client swap hoga (~30 line ka change) — abhi nahi.
+
+### Free LLM (OpenRouter) strategy — free users ko free model par
+
+App me OpenRouter already supported hai (`openrouter.apiKey` + `openrouter.model`,
+default ek `:free` DeepSeek variant). **Free-user tier ke liye ye sensible hai:**
+
+- `ai.provider = openrouter` set karo → saare AI calls pehle free model se
+- Free model rate-limit/down ho → app ka apna fallback chain chalta hai
+  (deepseek → custom → gemini → openrouter) — ye **built-in automatic routing**
+  hai, OpenRouter ke andar wali se better kyunki ye paid keys ko bhi cover karta hai
+- ⚠️ OpenRouter ka `openrouter/auto` use **mat** karna free-tier ke liye — wo
+  paid models bhi chun sakta hai (bill aayega), aur wo free-model rotation nahi hai
+- ⚠️ `:free` models aate-jaate rehte hain + per-day caps hote hain — primary
+  provider ke roop me theek, backstop (DeepSeek paid key) hamesha rakhna
+
+Free model badalne ka manual process: Admin → AI Config → openrouter.model
+update karo (abhi single model id). Comma-separated free-model rotation
+kal ko chahiye hua to ~10 line ka change hai.
 
 ---
 

@@ -90,7 +90,9 @@ self.addEventListener('fetch', (e) => {
           return fresh
         }
       } catch { /* fallthrough */ }
-      return Response.redirect('/?sw-recovered=1', 302)
+      // Response.redirect needs an ABSOLUTE URL — a relative one throws
+      // "Failed to convert value to 'Response'" and rejects the FetchEvent.
+      return Response.redirect(new URL('/?sw-recovered=1', self.location.origin).href, 302)
     })())
     return
   }

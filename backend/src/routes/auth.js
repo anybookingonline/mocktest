@@ -5,11 +5,12 @@ import { signToken, authRequired } from '../middleware/auth.js'
 import { authLimiter } from '../middleware/rateLimit.js'
 import { consumeInvite, notifyLinked } from '../utils/institute.js'
 import { awardPoints } from '../utils/points.js'
+import { sendVerificationEmail, sendPasswordResetEmail, consumeEmailToken, emailConfigured } from '../utils/email.js'
 
 const router = express.Router()
 
 function publicUser(u) {
-  return { id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, exam_id: u.exam_id, target_exam: u.target_exam, institute_id: u.institute_id || null }
+  return { id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, exam_id: u.exam_id, target_exam: u.target_exam, institute_id: u.institute_id || null, email_verified: Boolean(u.email_verified) }
 }
 
 router.post('/register', authLimiter(), async (req, res) => {
@@ -37,6 +38,9 @@ router.post('/register', authLimiter(), async (req, res) => {
   if (inviteCode) await awardPoints(fresh.id, 'invite_accepted', { dedupe: `invite:${fresh.id}` })
   // Best-effort Telegram welcome if this student has already linked the bot
   notifyLinked(fresh.id, `🎓 Welcome to Aisepadho, ${fresh.name}! Account ready hai — login karo, target exam set karo aur pehla free test do.`).catch(() => {})
+  // Best-effort verification email (soft verify — account is already usable)
+  const baseUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`
+  if (await emailConfigured().catch(() => false)) sendVerificationEmail(fresh, baseUrl).catch(() => {})
   res.status(201).json({ token: signToken(fresh), user: publicUser(fresh) })
 })
 
@@ -51,6 +55,52 @@ router.post('/login', authLimiter(), async (req, res) => {
 
 router.get('/me', authRequired, (req, res) => {
   res.json({ user: publicUser(req.user) })
+})
+
+// ---------------------------------------------------------------------------
+// Email verification + password reset (transactional email flows)
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/send-verification — resend the verify link (logged-in user)
+router.post('/send-verification', authRequired, async (req, res) => {
+  if (req.user.email_verified) return res.json({ ok: true, alreadyVerified: true })
+  if (!(await emailConfigured())) return res.status(503).json({ error: 'Email service not configured' })
+  const baseUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`
+  sendVerificationEmail(req.user, baseUrl).catch(() => {})
+  res.json({ ok: true })
+})
+
+// GET /api/auth/verify-email?token=..&uid=.. — clicked from the email link
+router.get('/verify-email', async (req, res) => {
+  const { token, uid } = req.query
+  const ok = token && uid && await consumeEmailToken(Number(uid), 'verify', token)
+  if (ok) await db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(Number(uid))
+  const base = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`
+  return res.redirect(302, `${base}/verify-email?status=${ok ? 'ok' : 'bad'}`)
+})
+
+// POST /api/auth/forgot-password — always 200 (no account enumeration)
+router.post('/forgot-password', authLimiter(), async (req, res) => {
+  const { email } = req.body || {}
+  if (!email) return res.status(400).json({ error: 'Email required' })
+  if (!(await emailConfigured())) return res.status(503).json({ error: 'Email service not configured — admin se reset karwao' })
+  const user = await db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase())
+  if (user) sendPasswordResetEmail(user).catch(() => {}) // fire-and-forget
+  res.json({ ok: true, message: 'Agar ye email registered hai, reset code aa chuka hai (spam folder bhi check karein)' })
+})
+
+// POST /api/auth/reset-password — { email, code, password }
+router.post('/reset-password', authLimiter(), async (req, res) => {
+  const { email, code, password } = req.body || {}
+  if (!email || !code || !password) return res.status(400).json({ error: 'Email, code and new password required' })
+  if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
+  const user = await db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase())
+  if (!user) return res.status(400).json({ error: 'Invalid or expired code' })
+  const ok = await consumeEmailToken(user.id, 'password_reset', code)
+  if (!ok) return res.status(400).json({ error: 'Invalid or expired code' })
+  const hash = bcrypt.hashSync(String(password), 10)
+  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id)
+  res.json({ ok: true, message: 'Password updated — ab naye password se login karo' })
 })
 
 router.put('/me', authRequired, async (req, res) => {

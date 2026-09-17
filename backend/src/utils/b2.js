@@ -27,12 +27,22 @@ export function b2EnvConfigured() {
 
 let auth = null // { token, apiUrl, downloadUrl, bucketName, publicBase, expiresAt }
 
+// Normalize a public base URL: strip trailing slashes and add https:// when the
+// scheme is missing (admins often paste "s3.us-east-005.backblazeb2.com" —
+// "Failed to parse URL" naya b2.js kya hai uske bina).
+function normalizeBaseUrl(raw) {
+  let v = String(raw || '').trim().replace(/\/+$/, '')
+  if (!v) return ''
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`
+  return v
+}
+
 export async function getB2Config() {
   const envKeyId = process.env.B2_KEY_ID
   const envAppKey = process.env.B2_APP_KEY
   const envBucketId = process.env.B2_BUCKET_ID
   const envBucketName = process.env.B2_BUCKET_NAME || ''
-  const envPublicBase = (process.env.B2_PUBLIC_BASE_URL || '').replace(/\/$/, '')
+  const envPublicBase = normalizeBaseUrl(process.env.B2_PUBLIC_BASE_URL)
   if (envKeyId && envAppKey && (envBucketId || envBucketName)) {
     return { keyId: envKeyId, appKey: envAppKey, bucketId: envBucketId || '', bucketName: envBucketName, publicBase: envPublicBase, source: 'env' }
   }
@@ -42,7 +52,7 @@ export async function getB2Config() {
   ])
   return {
     keyId: keyId || '', appKey: appKey || '', bucketId: bucketId || '',
-    bucketName: bucketName || '', publicBase: (publicBase || '').replace(/\/$/, ''),
+    bucketName: bucketName || '', publicBase: normalizeBaseUrl(publicBase),
     source: 'settings'
   }
 }
@@ -106,9 +116,15 @@ export async function b2SelfTest() {
       body: new Uint8Array(payload)
     })
     if (!up.ok) throw new Error(`upload failed (${up.status})`)
+    const upData = await up.json().catch(() => ({}))
     step('upload', true, key)
 
-    const buf = await downloadFromB2(key)
+    // Round-trip via b2_download_file_by_id — authorized call, private buckets
+    // par bhi chalta hai aur public base URL / bucket-name par depend nahi karta.
+    const dlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_download_file_by_id?fileId=${encodeURIComponent(upData.fileId || '')}`,
+      { headers: { Authorization: auth.token } })
+    if (!dlRes.ok) throw new Error(`download failed (${dlRes.status})`)
+    const buf = Buffer.from(await dlRes.arrayBuffer())
     step('download', buf.equals(payload), `${buf.length} bytes round-trip`)
   } catch (e) {
     step(key ? 'download' : 'upload', false, e.message)
@@ -246,9 +262,10 @@ export async function uploadToB2(buffer, key, contentType = 'application/octet-s
 export async function downloadFromB2(key) {
   const a = await authorize()
   const c = await getB2Config()
-  const url = c.publicBase
-    ? `${c.publicBase}/${key}`
-    : `${a.downloadUrl}/file/${c.bucketName || auth.bucketName}/${encodeURIComponent(key)}`
+  // NOTE: ye server-side authorized download hai — hamesha B2 ke apne
+  // downloadUrl se jaata hai (private buckets par bhi kaam karta hai).
+  // publicBase sirf user-facing friendly URLs ke liye hai (publicUrlForKey).
+  const url = `${a.downloadUrl}/file/${encodeURIComponent(c.bucketName || auth.bucketName || '')}/${encodeURIComponent(key)}`
   const res = await fetch(url, { headers: { Authorization: a.token } })
   if (!res.ok) throw new Error(`B2 download failed (${res.status})`)
   return Buffer.from(await res.arrayBuffer())

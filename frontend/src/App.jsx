@@ -6,7 +6,7 @@ import { Splash } from './pages/auth/AuthPages.jsx'
 
 import Landing from './pages/Landing.jsx'
 import Schools from './pages/Schools.jsx'
-import { LoginPage, RegisterPage } from './pages/auth/AuthPages.jsx'
+import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages.jsx'
 import Dashboard from './pages/student/Dashboard.jsx'
 import Practice from './pages/student/Practice.jsx'
 import Tests from './pages/student/Tests.jsx'
@@ -63,6 +63,9 @@ export default function App() {
         <Route path="/schools" element={<Schools />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
         <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
         <Route path="/practice" element={<Protected><Practice /></Protected>} />

@@ -17,12 +17,16 @@ const PROVIDERS = {
   },
   gemini: {
     base: 'https://generativelanguage.googleapis.com/v1beta',
-    defaultModel: 'gemini-2.0-flash',
-    defaultVisionModel: 'gemini-2.0-flash'
+    // NOTE: gemini-2.0-flash was retired by Google (API returns 404 and points
+    // to gemini-3.6-flash). Update this default whenever Google retires a model.
+    defaultModel: 'gemini-3.6-flash',
+    defaultVisionModel: 'gemini-3.6-flash'
   },
   openrouter: {
     base: 'https://openrouter.ai/api/v1',
-    defaultModel: 'deepseek/deepseek-chat-v3-0324:free'
+    // :free slugs rotate — when this dies (404), pick the current free model
+    // from https://openrouter.ai/models?max_price=0 and update Admin > AI Config.
+    defaultModel: 'inclusionai/ling-3.0-flash-vl:free'
   }
 }
 

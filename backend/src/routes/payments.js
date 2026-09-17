@@ -10,6 +10,7 @@ import { loadMonetizationConfig, loadGatewayConfig, GATEWAYS, getRetentionStatus
 import { listPlans as listAddonPlans, ADDONS, activateAddon } from '../utils/addons.js'
 import { b2Configured, putFile } from '../utils/b2.js'
 import { getConfig } from '../utils/aiService.js'
+import { sendPaymentReceiptEmail } from '../utils/email.js'
 
 const router = Router()
 
@@ -50,11 +51,68 @@ router.get('/plans', async (req, res) => {
 })
 
 // GET /api/payments/my - current user retention + add-on entitlements
+// ---------------------------------------------------------------------------
+// Invoice + receipt plumbing. Assign a human-readable invoice number the first
+// time a payment reaches status='success' (any of the 3 success paths), then
+// fire the receipt email best-effort. Never throws into the payment flow.
+// ---------------------------------------------------------------------------
+async function finalizeSuccessfulPayment(pay) {
+  try {
+    let invoiceNo = pay.invoice_no
+    if (!invoiceNo) {
+      const year = new Date().getFullYear()
+      const c = await db.prepare('SELECT COUNT(*) c FROM payments WHERE invoice_no IS NOT NULL').get()
+      invoiceNo = `AP-${year}-${String(Number(c.c) + 1).padStart(6, '0')}`
+      await db.prepare('UPDATE payments SET invoice_no = ? WHERE id = ?').run(invoiceNo, pay.id)
+    }
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(pay.user_id)
+    if (user?.email) sendPaymentReceiptEmail(user, { ...pay, invoice_no: invoiceNo }).catch(() => {})
+    return invoiceNo
+  } catch (e) {
+    console.error('[payments] invoice/email finalize error:', e.message)
+    return null
+  }
+}
+
+// GET /api/payments/my/invoice/:paymentId — print/PDF-ready invoice (HTML)
+router.get('/my/invoice/:paymentId', authRequired, async (req, res) => {
+  const pay = await db.prepare('SELECT * FROM payments WHERE id = ? AND user_id = ?').get(Number(req.params.paymentId), req.user.id)
+  if (!pay) return res.status(404).json({ error: 'Payment not found' })
+  if (pay.status !== 'success') return res.status(400).json({ error: 'Invoice only available for successful payments' })
+  let invoiceNo = pay.invoice_no
+  if (!invoiceNo) invoiceNo = await finalizeSuccessfulPayment(pay)
+  const rows = await db.prepare(`SELECT name, email FROM users WHERE id = ?`).all(pay.user_id)
+  const buyer = rows[0] || {}
+  const d = new Date(pay.created_at || Date.now())
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+  const inr = (n, cur = 'INR') => cur === 'INR' ? `₹${Number(n || 0).toLocaleString('en-IN')}` : `${cur} ${n}`
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${esc(invoiceNo)}</title></head>
+  <body style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:680px;margin:32px auto;padding:0 16px;color:#0f172a;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
+      <div><span style="font-size:24px;font-weight:800;">Aisepadho</span><div style="color:#64748b;font-size:12px;">Padho. Test do. Aage badho.</div></div>
+      <div style="text-align:right;font-size:13px;color:#334155;"><b style="font-size:17px;">INVOICE</b><br>${esc(invoiceNo)}<br>${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+    </div>
+    <div style="font-size:13px;color:#334155;margin-bottom:20px;"><b>Billed to</b><br>${esc(buyer.name)}<br>${esc(buyer.email)}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <tr style="background:#f1f5f9;"><th style="text-align:left;padding:10px 12px;">Description</th><th style="text-align:right;padding:10px 12px;">Amount</th></tr>
+      <tr><td style="padding:12px;border-bottom:1px solid #e2e8f0;">${esc(String(pay.plan))} plan — Aisepadho subscription (1 year)</td><td style="text-align:right;padding:12px;border-bottom:1px solid #e2e8f0;font-weight:600;">${inr(pay.amount, pay.currency)}</td></tr>
+    </table>
+    <div style="text-align:right;margin-top:14px;font-size:15px;"><b>Total: ${inr(pay.amount, pay.currency)}</b></div>
+    <div style="margin-top:28px;font-size:12px;color:#64748b;">
+      Payment reference: ${esc(String(pay.provider_ref || pay.txn_ref || pay.id))} · Provider: ${esc(String(pay.provider))}<br>
+      Ye ek computer-generated invoice hai. GST invoice ke liye support@aisepadho.com par contact karein.
+    </div>
+  </body></html>`)
+})
+
 router.get('/my', authRequired, async (req, res) => {
   const ret = await getRetentionStatus(req.user.id)
   const { getEntitlements } = await import('../utils/addons.js')
   const entitlements = await getEntitlements(req.user.id)
-  res.json({ ...ret, ...entitlements })
+  const history = await db.prepare(`SELECT id, provider, amount, currency, plan, status, invoice_no, created_at
+    FROM payments WHERE user_id = ? ORDER BY id DESC LIMIT 20`).all(req.user.id)
+  res.json({ ...ret, ...entitlements, history })
 })
 
 // POST /api/payments/create-order
@@ -142,6 +200,7 @@ async function completeAndRespond(res, userId, provider, ref) {
   if (!pay) return res.status(404).json({ error: 'Order not found' })
   if (pay.user_id !== userId) return res.status(403).json({ error: 'Order does not belong to this user' })
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
+  finalizeSuccessfulPayment({ ...pay, status: 'success' }) // invoice + receipt email (best-effort)
   if (isGroupPlan(pay.plan)) {
     const out = await activateGroupPlan(pay)
     return res.json({ active: true, addon: 'group_discussions', group: out })
@@ -248,6 +307,7 @@ async function completePayment(provider, ref) {
   const pay = await db.prepare('SELECT * FROM payments WHERE provider_ref = ? AND provider = ? AND status = ?').get(ref, provider, 'pending')
   if (!pay) return
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
+  finalizeSuccessfulPayment({ ...pay, status: 'success' }) // invoice + receipt email (best-effort)
   if (isGroupPlan(pay.plan)) await activateGroupPlan(pay)
   else if (ADDONS[pay.plan]) await activateAddon(pay.user_id, pay.plan)
   else await activateRetention(pay.user_id, pay.plan)
@@ -287,6 +347,7 @@ router.post('/admin/mark-paid', authRequired, platformOnly, async (req, res) => 
   const pay = await db.prepare('SELECT * FROM payments WHERE id = ? AND status = ?').get(paymentId, 'pending')
   if (!pay) return res.status(404).json({ error: 'Pending payment not found' })
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
+  finalizeSuccessfulPayment({ ...pay, status: 'success' }) // invoice + receipt email (best-effort)
   if (isGroupPlan(pay.plan)) {
     const out = await activateGroupPlan(pay)
     return res.json({ ok: true, addon: 'group_discussions', group: out })

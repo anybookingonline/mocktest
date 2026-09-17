@@ -12,11 +12,15 @@ export function clearToken() {
 
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const token = getToken()
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const opts = {
     method,
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }
+    // FormData (file uploads) must NOT get a manual Content-Type — the browser
+    // needs to set its own multipart boundary. Everything else is JSON.
+    headers: { ...(body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }
   }
-  if (body && typeof body !== 'string') opts.body = JSON.stringify(body)
+  if (isFormData) opts.body = body
+  else if (body && typeof body !== 'string') opts.body = JSON.stringify(body)
   else if (body) opts.body = body
 
   const res = await fetch('/api' + path, opts)

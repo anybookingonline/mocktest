@@ -143,8 +143,9 @@ export default function AdminSettings() {
             <input className="input" placeholder="aisepadho-files" value={cfg['b2.bucketName'] || ''} onChange={set('b2.bucketName')} />
           </label>
         </div>
-        <label className="field"><span>Public base URL (optional custom CDN)</span>
+        <label className="field"><span>Public base URL (optional custom CDN — full https:// URL)</span>
           <input className="input" placeholder="https://cdn.aisepadho.com" value={cfg['b2.publicBaseUrl'] || ''} onChange={set('b2.publicBaseUrl')} />
+          <span className="tiny muted">Friendly URLs ke liye hi hai — storage ise ke bina bhi kaam karta hai (khali chhod sakte ho). Scheme ke bina bhi chalega, https:// auto lag jata hai.</span>
         </label>
         {b2Result && (
           <div className="card" style={{ margin: '10px 0', padding: 12 }}>
@@ -201,6 +202,18 @@ export default function AdminSettings() {
         ))}
 
         {gateways.length === 0 && <p className="tiny muted mb">No gateways enabled — students will not be able to purchase. Enable at least one.</p>}
+
+        <hr className="divider" />
+        <b className="small mb" style={{ display: 'block' }}>📧 Email — transactional (Resend)</b>
+        <p className="tiny muted mb">Mode: <b>{cfg['email.apiKey'] ? 'yahan se set ✅' : (storage?.mode ? '' : '')}</b>. Password reset, email verification, payment receipts + invoices isi se jaate hain. Env me <code>RESEND_API_KEY</code> diya hai to ye field khaali chhod do — env priority rakhta hai. From address aapke verified domain ka hona chahiye (Resend dashboard me domain add karo, warna onboarding@resend.dev fallback chalega).</p>
+        <div className="field-row">
+          <label className="field"><span>Resend API key (re_…)</span>
+            <input className="input" type="password" placeholder="re_…" value={cfg['email.apiKey'] || ''} onChange={set('email.apiKey')} />
+          </label>
+          <label className="field"><span>From address</span>
+            <input className="input" placeholder="Aisepadho <noreply@aisepadho.com>" value={cfg['email.from'] || ''} onChange={set('email.from')} />
+          </label>
+        </div>
 
         <hr className="divider" />
         <div className="row mb">

@@ -24,9 +24,9 @@ const seed = async () => {
     'ai.provider': 'deepseek',
     'ai.fallbackEnabled': 'true',
     'deepseek.model': 'deepseek-chat',
-    'gemini.model': 'gemini-2.0-flash',
-    'gemini.visionModel': 'gemini-2.0-flash',
-    'openrouter.model': 'deepseek/deepseek-chat-v3-0324:free',
+    'gemini.model': 'gemini-3.6-flash',
+    'gemini.visionModel': 'gemini-3.6-flash',
+    'openrouter.model': 'inclusionai/ling-3.0-flash-vl:free',
     'platform.name': 'ExamAI',
     'platform.tagline': 'AI-Powered Mock Test & Practice Platform'
   }

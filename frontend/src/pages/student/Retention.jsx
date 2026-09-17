@@ -233,6 +233,35 @@ export default function Retention() {
         <Badge kind={active ? 'green' : 'red'}>{active ? 'Retention active' : 'Free plan'}</Badge>
       </div>
 
+      {/* --------------------------- Payment history + invoices --------------------------- */}
+      {status?.history?.length > 0 && (
+        <div className="card mb">
+          <b className="small">🧾 Payment history</b>
+          <table style={{ width: '100%', fontSize: 13, marginTop: 8, borderCollapse: 'collapse' }}>
+            <tbody>
+              {status.history.map((h) => (
+                <tr key={h.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '7px 4px' }}>{h.plan}</td>
+                  <td style={{ padding: '7px 4px' }}>₹{Number(h.amount).toLocaleString('en-IN')}</td>
+                  <td style={{ padding: '7px 4px' }}>
+                    {h.status === 'success'
+                      ? <Badge kind="green">Paid</Badge>
+                      : h.status === 'pending'
+                        ? <Badge kind="amber">Pending</Badge>
+                        : <Badge kind="gray">{h.status}</Badge>}
+                  </td>
+                  <td style={{ padding: '7px 4px', textAlign: 'right' }}>
+                    {h.status === 'success' && (
+                      <a href={`/api/payments/my/invoice/${h.id}`} target="_blank" rel="noreferrer" className="tiny">Invoice {h.invoice_no ? `(${h.invoice_no})` : ''}</a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ------------------------------ Coupon ------------------------------ */}
       <div className="card mb">
         <div className="spread mb">

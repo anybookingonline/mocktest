@@ -5,6 +5,8 @@ import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import SalesChat from '../components/SalesChat.jsx'
 
+// Marketing exam cards: seed exams get curated icons/notes; admin-created exams
+// appear automatically from the live /api/exams list (with a generic icon).
 const EXAMS = [
   { code: 'JEE-MAIN', icon: '⚙️', label: 'JEE Main', noteKey: 'ex.jee' },
   { code: 'NEET', icon: '🧬', label: 'NEET UG', noteKey: 'ex.neet' },
@@ -15,6 +17,8 @@ const EXAMS = [
   { code: 'GATE', icon: '🔧', label: 'GATE', noteKey: 'ex.gate' },
   { code: 'CUET', icon: '🎓', label: 'CUET UG', noteKey: 'ex.cuet' }
 ]
+const EXAM_META = Object.fromEntries(EXAMS.map((e) => [e.code, e]))
+const FALLBACK_EXAMS = EXAMS
 
 // Core features (originals) — all copy lives in LangContext per language
 const FEATURES = [
@@ -53,9 +57,19 @@ export default function Landing() {
   const { t } = useLang()
   const tagline = brand.tagline || 'Padho. Test do. Aage badho.'
   const [stats, setStats] = useState(null)
+  const [exams, setExams] = useState(FALLBACK_EXAMS)
 
   useEffect(() => {
     api.get('/health').then((d) => setStats({ questions: d.questions })).catch(() => {})
+    // Live exam list so admin-created exams (school classes, batches) show up automatically
+    api.get('/exams').then((d) => {
+      const rows = (d.exams || []).filter((e) => e.is_active)
+      if (!rows.length) return
+      setExams(rows.map((e) => {
+        const meta = EXAM_META[e.code]
+        return meta || { code: e.code, icon: '🎯', label: e.name, noteKey: null, note: e.description || '' }
+      }))
+    }).catch(() => {})
   }, [])
 
   return (
@@ -86,11 +100,11 @@ export default function Landing() {
 
       <div className="content" style={{ maxWidth: 1100 }}>
         <div className="grid grid-4 mb">
-          {EXAMS.map((e) => (
+          {exams.map((e) => (
             <div key={e.code} className="card hover" onClick={() => nav('/register')} style={{ cursor: 'pointer', textAlign: 'center' }}>
               <div style={{ fontSize: 30 }}>{e.icon}</div>
               <b style={{ display: 'block', marginTop: 6 }}>{e.label}</b>
-              <div className="tiny">{t(e.noteKey)}</div>
+              <div className="tiny">{e.noteKey ? t(e.noteKey) : (e.note || '')}</div>
             </div>
           ))}
         </div>

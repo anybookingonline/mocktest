@@ -20,6 +20,9 @@ export default function AdminInstitutes() {
   const [importVal, setImportVal] = useState('0')
   const [importSaving, setImportSaving] = useState(false)
   const [form, setForm] = useState({ name: '', contactEmail: '', planDays: 30, kind: 'coaching', aiDailyQuota: 0 })
+  const [apiKey, setApiKey] = useState({ configured: false, enabled: false, prefix: null })
+  const [apiKeyRaw, setApiKeyRaw] = useState(null) // shown ONCE right after mint
+  const [apiKeyBusy, setApiKeyBusy] = useState(false)
   const [subForm, setSubForm] = useState({ name: '', email: '', password: '' })
   const [subCreds, setSubCreds] = useState(null)
   const [csv, setCsv] = useState('')
@@ -40,7 +43,34 @@ export default function AdminInstitutes() {
       setInvites(inv.invites || [])
       setQuotaVal(String(me.ai_daily_quota ?? 0))
       setImportVal(String(me.ai_import_quota ?? 0))
+      setApiKeyRaw(null)
+      api.get(`/institutes/admin/institutes/${inst.id}/api-key`).then((d) => setApiKey(d)).catch(() => setApiKey({ configured: false }))
     } catch (e) { toast(e.message, 'err') }
+  }
+
+  const mintApiKey = async () => {
+    if (!confirm('Nayi API key banau? Purani key turant band ho jayegi (rotate).')) return
+    setApiKeyBusy(true)
+    try {
+      const d = await api.post(`/institutes/admin/institutes/${selected.institute.id}/api-key`, {})
+      setApiKeyRaw(d.raw)
+      setApiKey({ configured: true, enabled: true, prefix: d.prefix })
+      toast('API key generated — abhi copy kar lo, ye dobara nahi dikhegi', 'ok')
+    } catch (e) { toast(e.message, 'err') } finally { setApiKeyBusy(false) }
+  }
+
+  const toggleApiKey = async () => {
+    setApiKeyBusy(true)
+    try {
+      if (apiKey.enabled) {
+        await api.del(`/institutes/admin/institutes/${selected.institute.id}/api-key`)
+        toast('API key disable ho gayi')
+      } else {
+        await api.post(`/institutes/admin/institutes/${selected.institute.id}/api-key/enable`, {})
+        toast('API key enable ho gayi', 'ok')
+      }
+      setApiKey((k) => ({ ...k, enabled: !k.enabled }))
+    } catch (e) { toast(e.message, 'err') } finally { setApiKeyBusy(false) }
   }
 
   const create = async () => {
@@ -202,6 +232,45 @@ export default function AdminInstitutes() {
                 <button className="btn btn-ghost btn-sm" onClick={saveImportQuota} disabled={importSaving}>{importSaving ? 'Saving…' : 'Save quota'}</button>
               </div>
             </div>
+          </div>
+
+          <div className="card mb">
+            <div className="spread">
+              <div>
+                <b>🔑 API Access (integrations)</b>
+                <p className="tiny muted" style={{ marginTop: 4, maxWidth: 520 }}>
+                  Is institute ke ERP/enrollment system ke liye server-to-server key.
+                  Calls se students add/list aur PDF upload hota hai — quota aur review
+                  pipeline waise hi lagti hai. Key sirf banate waqt dikhti hai (securely store karo).
+                </p>
+              </div>
+              <div className="row">
+                <button className="btn btn-ghost btn-sm" onClick={mintApiKey} disabled={apiKeyBusy}>
+                  {apiKey.configured ? '🔄 Rotate key' : '+ Generate API key'}
+                </button>
+                {apiKey.configured && (
+                  <button className="btn btn-ghost btn-sm" onClick={toggleApiKey} disabled={apiKeyBusy}>
+                    {apiKey.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {apiKeyRaw && (
+              <div className="mt" style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(16,185,129,.10)', border: '1px solid rgba(16,185,129,.35)' }}>
+                <div className="tiny" style={{ marginBottom: 6 }}><b style={{ color: 'var(--green)' }}>⚠️ Ek hi baar dikhegi — abhi copy karo:</b></div>
+                <div className="row">
+                  <code className="small" style={{ wordBreak: 'break-all', flex: 1 }}>{apiKeyRaw}</code>
+                  <button className="btn btn-sm btn-ghost" onClick={() => { navigator.clipboard?.writeText(apiKeyRaw); toast('Copied', 'ok') }}>📋 Copy</button>
+                </div>
+                <div className="tiny muted" style={{ marginTop: 6 }}>Use: header <code>X-API-Key: &lt;key&gt;</code> → endpoints <code>/api/institutes/ext/*</code></div>
+              </div>
+            )}
+            {!apiKeyRaw && apiKey.configured && (
+              <div className="row mt">
+                <Badge kind={apiKey.enabled ? 'green' : 'gray'}>{apiKey.enabled ? 'active' : 'disabled'}</Badge>
+                <span className="tiny muted">key: <code>{apiKey.prefix}…</code></span>
+              </div>
+            )}
           </div>
 
           <div className="card mb">

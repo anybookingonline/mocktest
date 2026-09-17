@@ -404,6 +404,10 @@ CREATE TABLE IF NOT EXISTS payments (
 
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS txn_ref TEXT;
+-- Customer-facing invoice number (e.g. AP-2026-000123), assigned once when a
+-- payment reaches status='success'. NULL = not yet successful/legacy row.
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_no TEXT;
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_no);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof TEXT;
 
@@ -495,6 +499,39 @@ CREATE INDEX IF NOT EXISTS idx_pdf_imports_inst ON pdf_imports(institute_id);
 -- 1 = extraction parked in the review queue (staging) instead of publishing
 -- straight to the shared question bank (institute self-serve imports).
 ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS review_required INTEGER DEFAULT 0;
+
+-- ---------------------------------------------------------------------------
+-- Email (transactional — Resend). Soft verification + password-reset tokens.
+-- email_verified: 0 = unverified (students can still use the app fully),
+-- 1 = clicked the verification link. Hard blocks hurt signup conversion.
+-- email_tokens: one row per verification/reset request. Only the sha256 of the
+-- token is stored (like B2/API keys) — the raw token lives only in the email.
+--   purpose 'verify'         48h link
+--   purpose 'password_reset' 15-min 6-digit code, single-use
+-- ---------------------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0;
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_email_tokens_lookup ON email_tokens(user_id, purpose, used_at);
+
+-- ---------------------------------------------------------------------------
+-- Institute API access (B2B integrations). Institutes that want to push data
+-- programmatically (student rosters, papers) get a scoped API key:
+--   api_key_hash  sha256 of the raw key (raw shown ONCE at creation)
+--   api_key_prefix first 12 chars for identification in the admin UI
+--   api_enabled   kill-switch without deleting the key
+-- External calls authenticate with:  X-API-Key: <raw key>
+-- ---------------------------------------------------------------------------
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS api_key_hash TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS api_key_prefix TEXT;
+ALTER TABLE institutes ADD COLUMN IF NOT EXISTS api_enabled INTEGER DEFAULT 0;
 
 -- ---------------------------------------------------------------------------
 -- Phase 3: extracted-questions review queue. Institute (sub-admin) PDF imports

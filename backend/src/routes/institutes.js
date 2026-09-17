@@ -5,7 +5,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import db from '../db.js'
 import { authRequired, adminOnly } from '../middleware/auth.js'
-import { uploadLimiter } from '../middleware/rateLimit.js'
+import { uploadLimiter, rateLimit } from '../middleware/rateLimit.js'
+import { createApiKey, revokeApiKey, enableApiKey, resolveApiKey } from '../utils/apiKeys.js'
 import {
   listInstitutes, createInstitute, updateInstitute, getInstitute,
   createInvite, listInvites, toggleInvite, checkInvite,
@@ -44,9 +45,12 @@ function monthStart() {
 // ---------------------------------------------------------------------------
 // Coaching / School white-label (B2B).
 //   Platform admin: /api/institutes/admin/*  (create institutes, invite codes,
-//                    sub-admins, plan management)
+//                    sub-admins, plan management, API keys)
 //   Institute sub-admin (role=admin + institute_id): /api/institutes/me/*
 //                    (their students, stats, CSV import, branding)
+//   External (X-API-Key): /api/institutes/ext/*  (school ERP / enrollment
+//                    scripts — students list/create, PDF upload; scoped to
+//                    the key's own institute, quota + review pipeline enforced)
 //   Public:         /api/institutes/public/*  (invite check, branding resolve)
 // ---------------------------------------------------------------------------
 
@@ -156,6 +160,43 @@ platformAdmin.get('/institutes/:id/stats', async (req, res) => {
   res.json(await instituteStats(req.params.id))
 })
 
+// ------------------------- institute API access (B2B) -----------------------
+// POST   /admin/institutes/:id/api-key          → mint/rotate (raw shown ONCE)
+// DELETE /admin/institutes/:id/api-key          → disable (kill-switch)
+// POST   /admin/institutes/:id/api-key/enable   → re-enable
+// GET    /admin/institutes/:id/api-key          → safe summary (prefix only)
+
+platformAdmin.post('/institutes/:id/api-key', async (req, res) => {
+  const inst = await db.prepare('SELECT id FROM institutes WHERE id = ?').get(Number(req.params.id))
+  if (!inst) return res.status(404).json({ error: 'Institute not found' })
+  const out = await createApiKey(req.params.id)
+  res.status(201).json({
+    ...out,
+    note: 'Ye key sirf EK BAAR dikh rahi hai — abhi copy karke securely store karo (ye dobara nahi milegi).',
+    usage: 'Header me bhejo: X-API-Key: <key>',
+    endpoints: '/api/institutes/ext/* (students, pdf-import)'
+  })
+})
+
+platformAdmin.delete('/institutes/:id/api-key', async (req, res) => {
+  await revokeApiKey(req.params.id)
+  res.json({ ok: true, message: 'API key disable ho gayi (data delete nahi hua — enable se wapas on hogi).' })
+})
+
+platformAdmin.post('/institutes/:id/api-key/enable', async (req, res) => {
+  const inst = await db.prepare('SELECT api_key_hash FROM institutes WHERE id = ?').get(Number(req.params.id))
+  if (!inst?.api_key_hash) return res.status(404).json({ error: 'Pehle API key generate karo' })
+  await enableApiKey(req.params.id)
+  res.json({ ok: true })
+})
+
+platformAdmin.get('/institutes/:id/api-key', async (req, res) => {
+  const inst = await db.prepare('SELECT api_key_hash, api_key_prefix, api_enabled FROM institutes WHERE id = ?').get(Number(req.params.id))
+  if (!inst) return res.status(404).json({ error: 'Institute not found' })
+  if (!inst.api_key_hash) return res.json({ configured: false })
+  res.json({ configured: true, enabled: Boolean(Number(inst.api_enabled)), prefix: inst.api_key_prefix })
+})
+
 // --------------------------- institute sub-admin ----------------------------
 
 const me = Router()
@@ -244,11 +285,72 @@ me.put('/branding', async (req, res) => {
 // import, but gated by:
 //   1. Monthly import quota (institutes.ai_import_quota; 0 = disabled) — each
 //      extraction costs ~₹5–15 of AI, so the school buys quota, not compute.
-//   2. Global file-hash dedup — the same paper never processes twice and a
-//      duplicate does NOT consume quota.
+//   2. Institute-scoped file-hash dedup — the same paper never processes twice
+//      and a duplicate does NOT consume quota.
 //   3. Institute scoping — imports are tagged institute_id and only that
 //      institute (and the platform admin) can list them.
+// The SAME flow serves the external API (X-API-Key) via uploadInstitutePdf().
 // ---------------------------------------------------------------------------
+
+// Shared upload flow (sub-admin dashboard + external API). Caller middleware
+// guarantees req.instituteId is set. Returns { status, body } or { status, error }.
+async function uploadInstitutePdf(req) {
+  if (!req.file) return { status: 400, error: 'PDF file required' }
+  const examId = Number(req.body?.examId)
+  if (!examId) return { status: 400, error: 'examId required' }
+  const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(examId)
+  if (!exam) return { status: 404, error: 'Exam not found' }
+
+  const inst = await db.prepare('SELECT ai_import_quota FROM institutes WHERE id = ?').get(req.instituteId)
+  const quota = Number(inst?.ai_import_quota) || 0
+  if (!quota) {
+    fs.unlink(req.file.path, () => {})
+    return { status: 403, error: 'PDF upload aapke institute ke liye enabled nahi hai — platform admin se monthly import quota activate karwaye.' }
+  }
+  const used = await db.prepare('SELECT COUNT(*) c FROM pdf_imports WHERE institute_id = ? AND created_at >= ?')
+    .get(req.instituteId, monthStart())
+  if (Number(used?.c) >= quota) {
+    fs.unlink(req.file.path, () => {})
+    return { status: 429, error: `Is mahine ka import quota (${quota} papers) poori tarah use ho chuka hai — agle mahine try karein ya platform admin se quota badhwaye.` }
+  }
+
+  const buffer = fs.readFileSync(req.file.path)
+  const fileHash = hashContent(buffer)
+  // Reuse: same paper never processed twice (quota NOT consumed on dup).
+  // Scope: only THIS institute's own completed import counts — another
+  // school's copy of the same PDF has institute-private questions, so School B
+  // still gets its own upload -> extract -> review -> own questions flow.
+  const dup = await db.prepare(`SELECT * FROM pdf_imports WHERE file_hash = ? AND institute_id = ? AND status = 'completed'`).get(fileHash, req.instituteId)
+  if (dup) {
+    fs.unlink(req.file.path, () => {})
+    return { status: 200, body: { reused: true, importId: dup.id, questions_created: dup.questions_created, message: 'Ye paper pehle hi import ho chuka hai — stored question bank use hoga, AI cost nahi laga.' } }
+  }
+
+  // Durable archive copy in B2 when configured (same as platform import)
+  let storageUrl = null
+  if (await b2Configured()) {
+    try {
+      storageUrl = await putFile(req.file.path, { prefix: 'pdfs', filename: req.file.originalname, contentType: 'application/pdf' })
+    } catch (e) {
+      console.error('[b2] institute PDF archive failed:', e.message) // non-fatal
+    }
+  }
+
+  const rec = await db.prepare(`INSERT INTO pdf_imports (exam_id, filename, file_path, file_hash, status, created_by, institute_id, review_required)
+    VALUES (?,?,?,?,?,?,?,1)`).run(examId, req.file.originalname, storageUrl || req.file.path, fileHash, 'processing', req.user?.id || null, req.instituteId)
+  const importId = rec.lastInsertRowid
+
+  // Same AI pipeline as the platform-admin import, but the output goes to the
+  // review queue (staging) instead of straight into the shared question bank.
+  processPdf(importId, examId, buffer, req.file.path, { stageOnly: true, instituteId: req.instituteId }).catch(async e => {
+    await db.prepare(`UPDATE pdf_imports SET status='failed', error=? WHERE id=?`).run(String(e.message || e).slice(0, 2000), importId)
+  })
+
+  return {
+    status: 202,
+    body: { importId, message: 'PDF accept ho gaya. Processing background me chal rahi hai (Gemini Vision + DeepSeek) — questions pehle aapke review queue me aayenge, approve karne par question bank me publish honge.' }
+  }
+}
 
 // GET /api/institutes/me/pdf-imports — usage + last 50 institute imports
 me.get('/pdf-imports', async (req, res) => {
@@ -324,61 +426,71 @@ me.post('/pdf-imports/:id/review', async (req, res) => {
 
 // POST /api/institutes/me/pdf-import — upload one paper (multipart 'file' + examId)
 me.post('/pdf-import', uploadLimiter(), pdfUpload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'PDF file required' })
-  const examId = Number(req.body?.examId)
-  if (!examId) return res.status(400).json({ error: 'examId required' })
-  const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(examId)
-  if (!exam) return res.status(404).json({ error: 'Exam not found' })
+  const r = await uploadInstitutePdf(req)
+  if (r.error) return res.status(r.status).json({ error: r.error })
+  res.status(r.status).json(r.body)
+})
 
+// ---------------------------------------------------------------------------
+// External institute API (X-API-Key). Server-to-server access for schools/
+// coachings whose systems (ERP, enrollment scripts) want to integrate.
+//   Auth:    X-API-Key header → resolveApiKey → req.instituteId (scoped)
+//   Limits:  per-institute rate limit; PDF uploads share the SAME monthly
+//            quota + hash-dedup + mandatory review queue as sub-admin uploads
+//   Scope:   a key can only ever touch its own institute's data
+// ---------------------------------------------------------------------------
+const ext = Router()
+
+ext.use(async (req, res, next) => {
+  const instituteId = await resolveApiKey(req.headers['x-api-key'])
+  if (!instituteId) return res.status(401).json({ error: 'Invalid or disabled API key' })
+  req.instituteId = instituteId
+  next()
+})
+
+// Per-institute rate limit: 60 requests/minute is plenty for a sync job
+ext.use(rateLimit({
+  key: 'ext-api',
+  keyFn: (req) => String(req.instituteId),
+  windowSec: 60,
+  max: 60,
+  message: 'API rate limit reached for your institute (60 req/min).'
+}))
+
+// GET /api/institutes/ext/students — roster
+ext.get('/students', async (req, res) => {
+  res.json({ students: await instituteStudents(req.instituteId) })
+})
+
+// POST /api/institutes/ext/students — enroll students (JSON array),
+// reuses the same CSV bulk pipeline (invite-link students join themselves;
+// external enrollment pushes them in).
+ext.post('/students', async (req, res) => {
+  const list = req.body?.students
+  if (!Array.isArray(list) || !list.length) return res.status(400).json({ error: 'students: [{name,email,password}] array required' })
+  const csv = list.map((s) => `${s.name || ''},${s.email || ''},${s.password || ''}`).join('\n')
+  const out = await bulkCreateStudents({ instituteId: req.instituteId, csv })
+  res.status(201).json(out)
+})
+
+// GET /api/institutes/ext/pdf-imports — quota state + last imports
+ext.get('/pdf-imports', async (req, res) => {
   const inst = await db.prepare('SELECT ai_import_quota FROM institutes WHERE id = ?').get(req.instituteId)
-  const quota = Number(inst?.ai_import_quota) || 0
-  if (!quota) {
-    fs.unlink(req.file.path, () => {})
-    return res.status(403).json({ error: 'PDF upload aapke institute ke liye enabled nahi hai — platform admin se monthly import quota activate karwaye.' })
-  }
-  const used = await db.prepare('SELECT COUNT(*) c FROM pdf_imports WHERE institute_id = ? AND created_at >= ?')
-    .get(req.instituteId, monthStart())
-  if (Number(used?.c) >= quota) {
-    fs.unlink(req.file.path, () => {})
-    return res.status(429).json({ error: `Is mahine ka import quota (${quota} papers) poori tarah use ho chuka hai — agle mahine try karein ya platform admin se quota badhwaye.` })
-  }
+  const used = await db.prepare('SELECT COUNT(*) c FROM pdf_imports WHERE institute_id = ? AND created_at >= ?').get(req.instituteId, monthStart())
+  res.json({ quota: Number(inst?.ai_import_quota) || 0, usedThisMonth: Number(used?.c) || 0 })
+})
 
-  const buffer = fs.readFileSync(req.file.path)
-  const fileHash = hashContent(buffer)
-  // Reuse: same paper never processed twice (quota NOT consumed on dup).
-  // Scope: only THIS institute's own completed import counts — another
-  // school's copy of the same PDF has institute-private questions, so School B
-  // still gets its own upload -> extract -> review -> own questions flow.
-  const dup = await db.prepare(`SELECT * FROM pdf_imports WHERE file_hash = ? AND institute_id = ? AND status = 'completed'`).get(fileHash, req.instituteId)
-  if (dup) {
-    fs.unlink(req.file.path, () => {})
-    return res.json({ reused: true, importId: dup.id, questions_created: dup.questions_created, message: 'Ye paper pehle hi import ho chuka hai — stored question bank use hoga, AI cost nahi laga.' })
-  }
-
-  // Durable archive copy in B2 when configured (same as platform import)
-  let storageUrl = null
-  if (await b2Configured()) {
-    try {
-      storageUrl = await putFile(req.file.path, { prefix: 'pdfs', filename: req.file.originalname, contentType: 'application/pdf' })
-    } catch (e) {
-      console.error('[b2] institute PDF archive failed:', e.message) // non-fatal
-    }
-  }
-
-  const rec = await db.prepare(`INSERT INTO pdf_imports (exam_id, filename, file_path, file_hash, status, created_by, institute_id, review_required)
-    VALUES (?,?,?,?,?,?,?,1)`).run(examId, req.file.originalname, storageUrl || req.file.path, fileHash, 'processing', req.user.id, req.instituteId)
-  const importId = rec.lastInsertRowid
-
-  res.status(202).json({ importId, message: 'PDF accept ho gaya. Processing background me chal rahi hai (Gemini Vision + DeepSeek) — questions pehle aapke review queue me aayenge, approve karne par question bank me publish honge.' })
-
-  // Same AI pipeline as the platform-admin import, but the output goes to the
-  // review queue (staging) instead of straight into the shared question bank.
-  processPdf(importId, examId, buffer, req.file.path, { stageOnly: true, instituteId: req.instituteId }).catch(async e => {
-    await db.prepare(`UPDATE pdf_imports SET status='failed', error=? WHERE id=?`).run(String(e.message || e).slice(0, 2000), importId)
-  })
+// POST /api/institutes/ext/pdf-import — upload a paper (multipart 'file' + examId field).
+// Same quota/dedup/review path as the sub-admin dashboard upload — the API is
+// a convenience, not a bypass (shared uploadInstitutePdf() flow).
+ext.post('/pdf-import', rateLimit({ key: 'ext-upload', keyFn: (req) => String(req.instituteId), windowSec: 60 * 60, max: 30, message: 'Upload limit reached for your institute. Try again later.' }), pdfUpload.single('file'), async (req, res) => {
+  const r = await uploadInstitutePdf(req, { api: true })
+  if (r.error) return res.status(r.status || 400).json({ error: r.error })
+  res.status(r.status).json(r.body)
 })
 
 router.use('/admin', platformAdmin)
 router.use('/me', me)
+router.use('/ext', ext)
 
 export default router

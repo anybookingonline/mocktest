@@ -13,6 +13,17 @@ export default function Dashboard() {
   const [tests, setTests] = useState([])
   const [recs, setRecs] = useState([])
   const [showAll, setShowAll] = useState(false)
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const [toastMsg, setToastMsg] = useState('')
+
+  const sendVerification = async () => {
+    setVerifyBusy(true)
+    try {
+      await api.post('/auth/send-verification', {})
+      setToastMsg('✅ Verification email bhej diya — inbox/spam check karo')
+      setTimeout(() => setToastMsg(''), 5000)
+    } catch { setToastMsg('Email service abhi available nahi — baad me try karo') } finally { setVerifyBusy(false) }
+  }
 
   useEffect(() => {
     api.get('/analytics/overview').then(setData).catch(() => {})
@@ -35,6 +46,13 @@ export default function Dashboard() {
 
   return (
     <StudentLayout title="Dashboard">
+      {user && user.email_verified === false && (
+        <div className="card mb spread" style={{ border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)' }}>
+          <span className="small">📧 Email verify karna chahte ho? Password reset aur payment receipts isi par aayenge.</span>
+          <button className="btn btn-sm btn-ghost" onClick={sendVerification} disabled={verifyBusy}>{verifyBusy ? 'Bhej rahe…' : 'Verify email'}</button>
+        </div>
+      )}
+      {toastMsg && <div className="card mb small" style={{ borderColor: 'var(--green)' }}>{toastMsg}</div>}
       <div className="card mb" style={{ background: 'linear-gradient(120deg, rgba(99,102,241,0.22), rgba(34,211,238,0.12))', border: '1px solid rgba(99,102,241,0.35)' }}>
         <div className="spread">
           <div>
