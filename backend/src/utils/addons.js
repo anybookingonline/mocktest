@@ -13,11 +13,27 @@ export const ADDONS = {
     id: 'ai_power',
     name: 'AI Power Pack',
     icon: '⚡',
-    description: 'Unlimited AI doubts, unlimited mock generation, priority AI queue — no daily caps.',
-    perks: ['Unlimited AI doubts (app + Telegram)', 'Unlimited AI full-mock generation', 'Priority AI queue'],
+    // "Unlimited" marketing-wise, but economically it's a high soft-cap:
+    // monetization.aiPowerDoubtsPerDay (default 50) — protects against the
+    // rare script-abuse user while feeling unlimited (docs/pricing-audit.md).
+    description: 'Unlimited AI doubts (fair-use 50/day), unlimited mock generation, priority AI queue.',
+    perks: ['AI doubts 50/day fair-use (app + Telegram)', 'Unlimited AI full-mock generation', 'Priority AI queue'],
     priceKey: 'addons.aiPowerPrice',
-    defaultPrice: 99,
+    defaultPrice: 199,
     daysKey: 'addons.aiPowerDays',
+    defaultDays: 365
+  },
+  ai_max: {
+    id: 'ai_max',
+    name: 'AI Max',
+    icon: '💎',
+    // Top tier: everything in AI Power + voice + priority. Internally the
+    // same 50/day soft-cap applies (ai_max implies ai_power everywhere).
+    description: 'Sab kuch unlimited (fair-use 50/day) + Voice Doubts included + priority AI — poora AI teacher experience.',
+    perks: ['Everything in AI Power Pack', '🎙️ Voice Doubts included (koi alag purchase nahi)', 'Priority AI response queue'],
+    priceKey: 'addons.aiMaxPrice',
+    defaultPrice: 399,
+    daysKey: 'addons.aiMaxDays',
     defaultDays: 365
   },
   voice_doubts: {
@@ -63,7 +79,7 @@ export async function listPlans() {
     getConfig('monetization.retentionDays', '365'),
     getConfig('monetization.freeHoldHours', '24')
   ])
-  const enabledMap = { ai_power: 'addons.aiPowerEnabled', voice_doubts: 'addons.voiceEnabled', current_affairs: 'addons.caEnabled', focus_areas: 'addons.focusEnabled' }
+  const enabledMap = { ai_power: 'addons.aiPowerEnabled', ai_max: 'addons.aiMaxEnabled', voice_doubts: 'addons.voiceEnabled', current_affairs: 'addons.caEnabled', focus_areas: 'addons.focusEnabled' }
   const addons = []
   for (const a of Object.values(ADDONS)) {
     const enabledKey = enabledMap[a.id]
@@ -96,11 +112,12 @@ export async function activateAddon(userId, addonId) {
 export async function getEntitlements(userId) {
   const rows = await db.prepare(`SELECT addon_id, expires_at FROM user_addons WHERE user_id = ?`).all(userId)
   const now = Date.now()
-  const out = { aiPower: false, voiceDoubts: false, currentAffairs: false, focusAreas: false, retention: false, addons: [] }
+  const out = { aiPower: false, aiMax: false, voiceDoubts: false, currentAffairs: false, focusAreas: false, retention: false, addons: [] }
   for (const r of rows) {
     const active = new Date(r.expires_at.replace(' ', 'T') + 'Z').getTime() > now
     if (!active) continue
     if (r.addon_id === 'ai_power') out.aiPower = true
+    if (r.addon_id === 'ai_max') { out.aiMax = true; out.aiPower = true; out.voiceDoubts = true } // Max includes Power + Voice
     if (r.addon_id === 'voice_doubts') out.voiceDoubts = true
     if (r.addon_id === 'current_affairs') out.currentAffairs = true
     if (r.addon_id === 'focus_areas') out.focusAreas = true
@@ -114,10 +131,19 @@ export async function getEntitlements(userId) {
 export async function hasAddon(userId, addonId) {
   const e = await getEntitlements(userId)
   if (addonId === 'ai_power') return e.aiPower
+  if (addonId === 'ai_max') return e.aiMax
   if (addonId === 'voice_doubts') return e.voiceDoubts
   if (addonId === 'current_affairs') return e.currentAffairs
   if (addonId === 'focus_areas') return e.focusAreas
   return e.addons.some((a) => a.id === addonId)
+}
+
+// Daily doubt cap for THIS user (0/undefined = uncapped). Order: ai_max/ai_power
+// share the high soft-cap; retention-plan buyers keep the mid cap; free users
+// the low hook cap. All values admin-configurable (no redeploy).
+export async function doubtCapFor(ent) {
+  if (ent.aiPower || ent.retention) return Number(await getConfig('monetization.paidDoubtsPerDay', '50')) || 50
+  return Number(await getConfig('monetization.freeDoubtsPerDay', '15')) || 15
 }
 
 export async function addonAdminGrant(userId, addonId) {

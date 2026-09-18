@@ -20,6 +20,8 @@ const seed = async () => {
   }
 
   // Default AI config (placeholders - user adds real keys in Admin > AI Config)
+  // Pricing tiers (docs/product-pitch.md): free hook cap, paid soft-cap,
+  // addon prices. ON CONFLICT DO NOTHING = admin-set values never overwritten.
   const defaults = {
     'ai.provider': 'deepseek',
     'ai.fallbackEnabled': 'true',
@@ -28,7 +30,15 @@ const seed = async () => {
     'gemini.visionModel': 'gemini-3.6-flash',
     'openrouter.model': 'inclusionai/ling-3.0-flash-vl:free',
     'platform.name': 'ExamAI',
-    'platform.tagline': 'AI-Powered Mock Test & Practice Platform'
+    'platform.tagline': 'AI-Powered Mock Test & Practice Platform',
+    'monetization.freeDoubtsPerDay': '5',
+    'monetization.paidDoubtsPerDay': '50',
+    'monetization.price': '999',
+    'addons.aiPowerPrice': '199',
+    'addons.aiMaxPrice': '399',
+    'addons.voicePrice': '99',
+    'addons.caPrice': '99',
+    'addons.focusPrice': '99'
   }
   for (const [k, v] of Object.entries(defaults)) {
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`).run(k, v)

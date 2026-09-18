@@ -64,24 +64,32 @@ Testbook ₹749 me sirf test deta hai. Hum ₹999 me teacher deta hoon."
 | Quota Control | Per-institute daily AI budget — school owner ka control, aapka loss-guard |
 | Teacher AI (Guru Studio) | Teach Kit (topic-wise lesson plans), Classroom Live Quiz (Kahoot-style PIN join), Confusion Check polls, Soft-skills (GD simulator, speech feedback) |
 
-### Monetization (₹999/year single plan + addons)
-| Item | Price | Kya milta hai |
+### Monetization (3-tier B2C + floor-wali B2B — final)
+
+**B2C — Students:**
+| Tier | Price | AI Doubts | Baaki |
+|---|---|---|---|
+| Free | ₹0 | **5/day** | Tests/PYQ/battles/CA — shared bank se, poora core experience |
+| **Pro** | **₹999/yr** (launch ₹499, pehle 500) · ya **₹149/mo** | **50/day fair-use** | Sab unlimited + Telegram tutor + full history |
+| 💎 **AI Max** | **₹1,499/yr** | **50/day fair-use** | Pro + 🎙️ Voice doubts included + priority AI queue |
+
+**B2B — School/Coaching (minimum-billing floors ke saath):**
+| Size | Price | Floor/Notes |
 |---|---|---|
-| **Main plan** | **₹999/yr** (launch promo ₹499) | Sab kuch unlimited — except AI doubts 15/day fair-use |
-| ⚡ AI Power | ₹199/yr | Unlimited AI doubts + priority generation |
-| 🎙️ Voice Doubts | ₹99/yr | Bol ke poocho, AI bole ke jawab de |
-| 📰 CA Pro | ₹99/yr | Roz Current Affairs quiz unlock |
-| 🔥 Focus Areas | ₹99/yr | PYQ heat-map — kya kam se kam padhna hai |
-| 💎 All-Access | ₹399/yr | Upar ke chaaron |
-| 🏫 School plan | ₹50-100/student/yr | White-label + papers + parent reports + teacher AI |
-| 🏫 Coaching plan | ₹5k-25k/yr | Same + batch-level analytics |
+| Pilot (30 din) | ₹0 | 1 class ≤60 students — conversion tool |
+| Small coaching (≤30) | Flat **₹25,000/yr** | Per-student confusion nahi |
+| School (standard) | **₹999/student/yr** | LEAD (₹2,000) ka 50% — white-label + apne papers + 8 competitive exams + battles + parent reports + teacher AI |
+| Volume (500+) | **₹599/student/yr** | Bade schools discount |
+| **Minimum billing** | **₹50,000/yr** | Isse neeche koi deal nahi |
+
+*(Loss-proof: institute AI quota = students × 1 doubt/day → worst-case cost ₹87.5/student/yr → ~91% margin at ₹999.)*
 | Installation | One-time (optional) | Setup + papers import + teacher training — bundled |
 
 ---
 
 ## Competitor comparison (pitch table)
 
-| | **Testbook** ₹749/yr | **PW** ~₹500-1k | **Adda247** ~₹600-1.5k | **Aisepadho** ₹999/yr |
+| | **Testbook** ₹749/yr | **PW** ~₹500-1k | **Adda247** ~₹600-1.5k | **Lytmus/LEAD (AI tutor)** ₹2-4.5k | **Aisepadho** ₹999/yr |
 |---|---|---|---|---|
 | Mock tests | ✅ 1.5 lakh | ✅ | ✅ | ✅ + AI-generated infinite |
 | PYQ papers | ✅ 30k | ✅ | ✅ | ✅ (aapke school ke bhi!) |
@@ -107,7 +115,7 @@ Testbook ₹749 me sirf test deta hai. Hum ₹999 me teacher deta hoon."
 4. Battles → quick-match → jeeto → points badhte dikhao
 5. Telegram → bot ko bhejo doubt → reply aata dikhao
 6. School walo ke liye: white-label demo + PDF upload → extraction → review queue
-7. Pricing: "₹999 saal bhar ka — promo me ₹499, sirf pehle 500 log"
+7. Pricing: "₹999 saal bhar ka — promo me ₹499, sirf pehle 500 log. School ke liye: bachche ke hisaab se ₹999/saal — LEAD se aadha, features se aage."
 
 ---
 

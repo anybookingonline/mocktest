@@ -124,29 +124,30 @@ export default function Doubts() {
         </div>
       )}
 
-      {/* Live free-doubt counter — "15/0" → "15/14" → exhausted shows upgrade CTA */}
-      {quota && !quota.unlimited && (
+      {/* Live tier-aware doubt counter — free: "5/0" → exhausted + CTA;
+          paid: "50/12 (fair-use)" amber note, no upsell spam */}
+      {quota && (
         <div className="card mb" style={{ padding: '12px 16px' }}>
           <div className="spread">
             <div className="row" style={{ gap: 10 }}>
               <span className="small"><b>AI doubts aaj:</b> {quota.limit}/{quota.used}</span>
-              <span className="tiny muted">(free limit {quota.limit}/day)</span>
+              {quota.tier === 'paid'
+                ? <span className="tiny muted">(fair-use {quota.limit}/day)</span>
+                : <span className="tiny muted">(free limit {quota.limit}/day)</span>}
             </div>
-            {quota.remaining === 0 && (
+            {quota.remaining === 0 && quota.tier === 'free' && (
               <div className="row" style={{ gap: 8 }}>
                 <span className="tiny" style={{ color: 'var(--red)' }}>Aaj ka limit khatam — kal phir milti hai</span>
-                <Link to="/retention" className="btn btn-primary btn-sm">⚡ AI Power lo — unlimited</Link>
+                <Link to="/retention" className="btn btn-primary btn-sm">⚡ AI Power lo — 50/day</Link>
               </div>
+            )}
+            {quota.remaining === 0 && quota.tier === 'paid' && (
+              <span className="tiny" style={{ color: 'var(--amber)' }}>Fair-use limit reached — kal phir milti hai</span>
             )}
           </div>
           <div className="progress" style={{ marginTop: 8 }}>
-            <div style={{ width: `${Math.round((quota.used / quota.limit) * 100)}%`, background: quota.remaining === 0 ? 'var(--red)' : undefined }} />
+            <div style={{ width: `${Math.round((quota.used / quota.limit) * 100)}%`, background: quota.remaining === 0 ? (quota.tier === 'paid' ? 'var(--amber)' : 'var(--red)') : undefined }} />
           </div>
-        </div>
-      )}
-      {quota?.unlimited && (
-        <div className="card mb" style={{ padding: '10px 16px', borderColor: 'rgba(251,191,36,0.4)' }}>
-          <span className="small">⚡ <b>Unlimited AI doubts</b> — AI Power Pack active. Koi daily cap nahi.</span>
         </div>
       )}
 

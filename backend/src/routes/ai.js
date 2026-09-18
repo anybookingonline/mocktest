@@ -5,7 +5,7 @@ import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
 import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
 import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS } from '../utils/aiService.js'
-import { getEntitlements } from '../utils/addons.js'
+import { getEntitlements, doubtCapFor } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
 import { getContextualAd, publicAdFields } from '../utils/monetize.js'
 import { checkInstituteAiQuota } from '../utils/institute.js'
@@ -36,19 +36,22 @@ router.get('/features', async (req, res) => {
   })
 })
 
-// GET /api/ai/doubt-quota — live free-doubt counter for the UI.
-// Paid users (AI Power / retention) are uncapped; free users get the daily
-// cap (monetization.freeDoubtsPerDay) with used/remaining so the Doubts page
-// can show "14/15 left" and an upgrade CTA when it hits 0.
+// GET /api/ai/doubt-quota — live doubt counter for the UI (tier-aware).
+// Free users see used/limit with upgrade CTA at 0; paid users see their
+// high soft-cap too ("fair-use 50/day") so the limit never surprises them.
 router.get('/doubt-quota', async (req, res) => {
   const ent = await getEntitlements(req.user.id)
-  if (ent.aiPower || ent.retention) {
-    return res.json({ capped: false, unlimited: true })
-  }
-  const freeCap = Number(await getConfig('monetization.freeDoubtsPerDay', '15')) || 15
+  const cap = await doubtCapFor(ent)
   const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
-  const u = Math.min(Number(used?.c) || 0, freeCap)
-  res.json({ capped: true, limit: freeCap, used: u, remaining: Math.max(0, freeCap - u), upgrade: 'ai_power' })
+  const u = Math.min(Number(used?.c) || 0, cap)
+  res.json({
+    capped: true,
+    tier: ent.aiPower || ent.retention ? 'paid' : 'free',
+    limit: cap,
+    used: u,
+    remaining: Math.max(0, cap - u),
+    upgrade: ent.aiPower || ent.retention ? null : 'ai_power'
+  })
 })
 
 // POST /api/ai/doubt - AI doubt solving for any question
@@ -66,19 +69,20 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
       used: instQuota.used
     })
   }
-  // Unit-economics guard: paid (AI Power / retention) users keep unlimited
-  // doubts; free users get a daily cap. Without this, every free account
-  // costs real AI money with zero revenue attached (see docs/pricing-audit.md).
+  // Unit-economics guard: every user gets a daily doubt cap by tier
+  // (free=monetization.freeDoubtsPerDay, paid=monetization.paidDoubtsPerDay
+  // soft-cap). Without this, every free account costs real AI money with
+  // zero revenue attached (see docs/pricing-audit.md).
   const entGuard = await getEntitlements(req.user.id)
-  if (!entGuard.aiPower && !entGuard.retention) {
-    const freeCap = Number(await getConfig('monetization.freeDoubtsPerDay', '15')) || 15
-    const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
-    if (Number(used?.c) >= freeCap) {
-      return res.status(402).json({
-        error: `Aaj ke ${freeCap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo unlimited doubts ke liye.`,
-        upgrade: 'ai_power'
-      })
-    }
+  const cap = await doubtCapFor(entGuard)
+  const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
+  if (Number(used?.c) >= cap) {
+    return res.status(402).json({
+      error: entGuard.aiPower || entGuard.retention
+        ? `Aaj ke ${cap} AI doubts (fair-use limit) khatam ho gaye — kal phir try karo. Priority support: support@aisepadho.com`
+        : `Aaj ke ${cap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo zyada doubts ke liye.`,
+      upgrade: entGuard.aiPower ? null : 'ai_power'
+    })
   }
   let q = null
   if (questionId) {
