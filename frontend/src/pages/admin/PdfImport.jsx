@@ -34,7 +34,8 @@ export default function AdminImport() {
     if (!provider?.geminiConfigured) { toast('Gemini Vision is required for PDF extraction. Configure the Gemini API key in AI Config.', 'err'); return }
     setBusy(true)
     try {
-      const d = await api.upload('/import/pdf', file, { examId })
+      const d = await api.upload('/import/pdf', file, { examId }, { silentAuth: true })
+      if (!d) { toast('Session expire ho gaya — login karke dobara try karo', 'err'); return }
       if (d.reused) toast(d.message, 'ok')
       else toast(d.message, 'ok')
       setFile(null); if (fileRef.current) fileRef.current.value = ''

@@ -10,7 +10,7 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
-async function request(path, { method = 'GET', body, headers = {} } = {}) {
+async function request(path, { method = 'GET', body, headers = {}, silentAuth = false } = {}) {
   const token = getToken()
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const opts = {
@@ -27,24 +27,30 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
   let data = null
   try { data = await res.json() } catch { data = {} }
   if (!res.ok) {
+    // Auth expiry is normal while a logged-out tab is open (PWA shells,
+    // background pages). Silently clear the token instead of spamming
+    // console errors — only surface it if the caller wants it.
+    if (res.status === 401) {
+      clearToken()
+      if (silentAuth) return null
+    }
     const err = new Error(data?.error || `Request failed (${res.status})`)
     err.status = res.status
     err.data = data
-    if (res.status === 401) clearToken()
     throw err
   }
   return data
 }
 
 export const api = {
-  get: (p) => request(p),
-  post: (p, body) => request(p, { method: 'POST', body }),
-  put: (p, body) => request(p, { method: 'PUT', body }),
-  del: (p) => request(p, { method: 'DELETE' }),
-  upload: (p, file, extra = {}) => {
+  get: (p, opts) => request(p, opts),
+  post: (p, body, opts) => request(p, { method: 'POST', body, ...opts }),
+  put: (p, body, opts) => request(p, { method: 'PUT', body, ...opts }),
+  del: (p, opts) => request(p, { method: 'DELETE', ...opts }),
+  upload: (p, file, extra = {}, opts = {}) => {
     const fd = new FormData()
     fd.append('file', file)
     for (const [k, v] of Object.entries(extra)) fd.append(k, v)
-    return request(p, { method: 'POST', body: fd })
+    return request(p, { method: 'POST', body: fd, ...opts })
   }
 }

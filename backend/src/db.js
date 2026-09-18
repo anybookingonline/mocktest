@@ -47,6 +47,16 @@ const TABLES_WITH_ID = new Set([
 
 function translate(sql) {
   let s = sql
+  // Direct $n positional placeholders -> '?' style, so EVERY query path uses
+  // one binding mechanism. Callers that hand-build "$1"/"$2" fragments (e.g.
+  // questions.js list route) pass values as positional args in $n order; the
+  // placeholder converter below renumbers them consistently so mixing both
+  // styles in one codebase can never drop a bind value (post-Supabase 500s).
+  const dollarArgs = []
+  s = s.replace(/\$(\d+)\b/g, (m, num) => {
+    dollarArgs.push(Number(num) - 1)
+    return '?'
+  })
   // INSERT OR IGNORE / REPLACE INTO -> plain INSERT (callers add ON CONFLICT)
   s = s.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO')
   s = s.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT INTO')
@@ -74,16 +84,18 @@ function translate(sql) {
   ) {
     s = s.replace(/;\s*$/, '') + ' RETURNING id'
   }
-  return s
+  return { sql: s, dollarArgs }
 }
 
 // Convert `?` / `@name` placeholders to positional $1..$n with a values array.
+// `dollarArgs` maps the query's original $n positions to positional-arg order
+// (from translate(), so hand-built "$2 ... $1" fragments bind the right value).
 function buildQuery(sql, args) {
   const isNamed = args.length === 1 && args[0] !== null && typeof args[0] === 'object' && !Array.isArray(args[0])
   const named = isNamed ? args[0] : null
-  const positional = isNamed ? [] : (args.length === 1 && Array.isArray(args[0]) ? args[0] : args)
+  let positional = isNamed ? [] : (args.length === 1 && Array.isArray(args[0]) ? args[0] : args)
 
-  const text = translate(sql)
+  const { sql: text, dollarArgs } = translate(sql)
   const values = []
   let out = ''
   let last = 0
@@ -96,7 +108,10 @@ function buildQuery(sql, args) {
     n += 1
     out += `$${n}`
     if (m[0] === '?') {
-      values.push(named ? named[String(pi)] : positional[pi])
+      // Originally a $n placeholder: bind the n-th positional argument.
+      // Otherwise a plain '?' — bind the next argument in sequence.
+      const idx = dollarArgs.length ? dollarArgs[pi] : pi
+      values.push(named ? named[String(idx)] : positional[idx])
       pi += 1
     } else {
       values.push(named ? named[m[1]] : undefined)

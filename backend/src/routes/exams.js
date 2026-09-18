@@ -5,7 +5,10 @@ import { cacheGet, cacheSet, cacheDel } from '../utils/redis.js'
 import { visibilityInstId } from '../utils/visibility.js'
 
 const router = express.Router()
-router.use(authRequired)
+// NOTE: GET / (list) is intentionally PUBLIC — the logged-out Landing page
+// renders exam cards and the Register page loads the exam dropdown from it.
+// Exam names/metadata are already public marketing copy; nothing sensitive.
+// All other routes below require auth (mutations remain platformOnly).
 
 // GET /api/exams - list all exams
 router.get('/', async (req, res) => {
@@ -17,7 +20,7 @@ router.get('/', async (req, res) => {
 })
 
 // GET /api/exams/:id - exam detail with full syllabus tree
-router.get('/:id', async (req, res) => {
+router.get('/:id', authRequired, async (req, res) => {
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(req.params.id)
   if (!exam) return res.status(404).json({ error: 'Exam not found' })
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ? ORDER BY sort_order').all(exam.id)
@@ -33,7 +36,7 @@ router.get('/:id', async (req, res) => {
 })
 
 // GET /api/exams/:id/syllabus - syllabus grouped
-router.get('/:id/syllabus', async (req, res) => {
+router.get('/:id/syllabus', authRequired, async (req, res) => {
   const examId = Number(req.params.id)
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ? ORDER BY sort_order').all(examId)
   const chapters = await db.prepare('SELECT * FROM chapters WHERE exam_id = ? ORDER BY sort_order').all(examId)

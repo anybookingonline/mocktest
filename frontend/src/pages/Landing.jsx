@@ -62,7 +62,8 @@ export default function Landing() {
   useEffect(() => {
     api.get('/health').then((d) => setStats({ questions: d.questions })).catch(() => {})
     // Live exam list so admin-created exams (school classes, batches) show up automatically
-    api.get('/exams').then((d) => {
+    api.get('/exams', { silentAuth: true }).then((d) => {
+      if (!d) return // 401 while logged out — fallback exam cards already render
       const rows = (d.exams || []).filter((e) => e.is_active)
       if (!rows.length) return
       setExams(rows.map((e) => {
