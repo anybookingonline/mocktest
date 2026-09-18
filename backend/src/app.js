@@ -52,6 +52,17 @@ import { purgeExpiredData } from './utils/retention.js'
 const app = express()
 app.set('trust proxy', 1)
 app.use(cors())
+// Basic security headers on every response (helmet-style, dependency-free).
+// Clickjacking + MIME-sniffing + referrer-leak protection; HSTS is set in
+// production where TLS terminates at the edge/proxy.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('X-DNS-Prefetch-Control', 'off')
+  if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  next()
+})
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 app.use('/api/payments/webhook', (req, res, next) => {
   const chunks = []

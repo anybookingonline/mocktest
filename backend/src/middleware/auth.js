@@ -1,7 +1,15 @@
 import jwt from 'jsonwebtoken'
+import crypto from 'crypto'
 import db from '../db.js'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'examai-super-secret-change-me'
+// Security: never ship a predictable fallback signing secret. If JWT_SECRET
+// is not configured we generate a random one at boot — tokens remain
+// unforgable, at the cost of logouts across restarts (acceptable + loud warn).
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  const generated = crypto.randomBytes(48).toString('hex')
+  console.warn('[SECURITY] JWT_SECRET env var not set — using a random per-boot secret. Users will be logged out on restart. Set JWT_SECRET for stable sessions.')
+  return generated
+})()
 
 export function signToken(user) {
   return jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
