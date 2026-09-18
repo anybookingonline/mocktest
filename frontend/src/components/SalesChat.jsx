@@ -53,7 +53,7 @@ export default function SalesChat() {
           onClick={() => { setOpen(true); setUnread(false) }}
           aria-label="Chat with sales support"
           style={{
-            position: 'fixed', bottom: 20, right: 20, zIndex: 60,
+            position: 'fixed', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 60,
             width: 56, height: 56, borderRadius: '50%', border: 'none',
             background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
             fontSize: 24, cursor: 'pointer', boxShadow: '0 8px 24px rgba(99,102,241,.45)',
@@ -68,11 +68,17 @@ export default function SalesChat() {
       {/* Chat panel */}
       {open && (
         <div style={{
-          position: 'fixed', bottom: 20, right: 20, zIndex: 60,
-          width: 'min(360px, calc(100vw - 32px))', height: 'min(520px, calc(100vh - 96px))',
+          position: 'fixed', bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))', right: 'calc(12px + env(safe-area-inset-right, 0px))', left: 'auto', zIndex: 60,
+          // Hard clamp inside the visual viewport: never wider/taller than what's
+          // on screen (100dvh for PWA standalone + iOS URL-bar behavior), so the
+          // helper can never push the page into horizontal scroll or sit off-screen.
+          width: 'min(360px, calc(100vw - 24px))', maxWidth: 'calc(100vw - 24px)',
+          height: 'min(520px, calc(100dvh - 88px))', maxHeight: 'calc(100dvh - 88px)',
           background: 'var(--panel, #111827)', border: '1px solid var(--border, #273049)',
           borderRadius: 16, boxShadow: '0 16px 48px rgba(0,0,0,.45)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden'
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          // long words / URLs inside messages can't blow out the panel width
+          wordBreak: 'break-word', overflowWrap: 'anywhere'
         }}>
           {/* Header */}
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border, #273049)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, rgba(99,102,241,.15), rgba(139,92,246,.15))' }}>
@@ -88,15 +94,15 @@ export default function SalesChat() {
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {msgs.map((m, i) => (
               <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
-                <div style={{
-                  padding: '9px 13px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.5,
-                  background: m.role === 'user' ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--bg, #0b0f1a)',
-                  color: m.role === 'user' ? '#fff' : 'var(--text, #e5e7eb)',
-                  border: m.role === 'user' ? 'none' : '1px solid var(--border, #273049)',
-                  borderBottomRightRadius: m.role === 'user' ? 4 : 14,
-                  borderBottomLeftRadius: m.role === 'user' ? 14 : 4,
-                  whiteSpace: 'pre-wrap'
-                }}>{m.content}</div>
+              <div style={{
+                padding: '9px 13px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.5,
+                background: m.role === 'user' ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--bg, #0b0f1a)',
+                color: m.role === 'user' ? '#fff' : 'var(--text, #e5e7eb)',
+                border: m.role === 'user' ? 'none' : '1px solid var(--border, #273049)',
+                borderBottomRightRadius: m.role === 'user' ? 4 : 14,
+                borderBottomLeftRadius: m.role === 'user' ? 14 : 4,
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere'
+              }}>{m.content}</div>
                 {m.escalate && (
                   <div className="tiny" style={{ marginTop: 6, padding: '6px 10px', borderRadius: 10, background: 'rgba(16,185,129,.12)', border: '1px solid rgba(16,185,129,.35)', fontSize: 11.5 }}>
                     ✅ School lead captured — humari team aapko 24 ghante me contact karegi.
@@ -125,7 +131,7 @@ export default function SalesChat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') send(input) }}
               placeholder="Apna sawal likho…"
-              style={{ flex: 1, background: 'var(--bg, #0b0f1a)', border: '1px solid var(--border, #273049)', borderRadius: 10, padding: '9px 12px', color: 'var(--text, #e5e7eb)', fontSize: 13.5, outline: 'none' }}
+              style={{ flex: 1, minWidth: 0, background: 'var(--bg, #0b0f1a)', border: '1px solid var(--border, #273049)', borderRadius: 10, padding: '9px 12px', color: 'var(--text, #e5e7eb)', fontSize: 13.5, outline: 'none' }}
             />
             <button onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="Send message" style={{
               width: 38, borderRadius: 10, border: 'none', cursor: 'pointer',
