@@ -18,6 +18,7 @@ export function Splash() {
 }
 
 export function AuthShell({ children, title, subtitle }) {
+  const nav = useNavigate()
   return (
     <div className="auth-wrap">
       {/* Language switcher — logged-out users bhi EN/Hinglish/हिं choose kar sakte hain */}
@@ -25,10 +26,16 @@ export function AuthShell({ children, title, subtitle }) {
         <LangSwitcher />
       </div>
       <div className="auth-card">
-        <Brand />
+        {/* Logo → home: logged-out users ko Landing, logged-in ko apna dashboard */}
+        <a href="/" aria-label="Home" onClick={(e) => { e.preventDefault(); nav('/') }} style={{ textDecoration: 'none', display: 'inline-block' }}>
+          <Brand />
+        </a>
         <h1 style={{ marginTop: 18 }}>{title}</h1>
         <p className="muted small mb">{subtitle}</p>
         {children}
+        <div className="row mt" style={{ justifyContent: 'center' }}>
+          <a href="/" className="tiny muted" onClick={(e) => { e.preventDefault(); nav('/') }}>← Home par wapas</a>
+        </div>
       </div>
     </div>
   )
