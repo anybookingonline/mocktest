@@ -16,8 +16,11 @@ export default function Doubts() {
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [ad, setAd] = useState(null) // contextual ad from the latest tutor answer (free users)
+  const [quota, setQuota] = useState(null) // { capped, limit, used, remaining } | { unlimited }
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
+
+  const loadQuota = () => api.get('/ai/doubt-quota').then(setQuota).catch(() => {})
 
   // #4 Doubt-to-Mock loop: AI generates 3 similar questions from this doubt
   const makeDoubtMock = async (doubtId) => {
@@ -34,6 +37,7 @@ export default function Doubts() {
   const load = () => api.get('/ai/doubts').then((d) => setHistory(d.doubts)).catch(() => {})
   useEffect(() => {
     load()
+    loadQuota()
     api.get('/ai/features').then(setFlags).catch(() => {})
   }, [])
 
@@ -53,6 +57,7 @@ export default function Doubts() {
       toast('Answered by AI tutor', 'ok')
       setMsg('')
       load()
+      loadQuota()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
 
@@ -116,6 +121,32 @@ export default function Doubts() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Live free-doubt counter — "15/0" → "15/14" → exhausted shows upgrade CTA */}
+      {quota && !quota.unlimited && (
+        <div className="card mb" style={{ padding: '12px 16px' }}>
+          <div className="spread">
+            <div className="row" style={{ gap: 10 }}>
+              <span className="small"><b>AI doubts aaj:</b> {quota.limit}/{quota.used}</span>
+              <span className="tiny muted">(free limit {quota.limit}/day)</span>
+            </div>
+            {quota.remaining === 0 && (
+              <div className="row" style={{ gap: 8 }}>
+                <span className="tiny" style={{ color: 'var(--red)' }}>Aaj ka limit khatam — kal phir milti hai</span>
+                <Link to="/retention" className="btn btn-primary btn-sm">⚡ AI Power lo — unlimited</Link>
+              </div>
+            )}
+          </div>
+          <div className="progress" style={{ marginTop: 8 }}>
+            <div style={{ width: `${Math.round((quota.used / quota.limit) * 100)}%`, background: quota.remaining === 0 ? 'var(--red)' : undefined }} />
+          </div>
+        </div>
+      )}
+      {quota?.unlimited && (
+        <div className="card mb" style={{ padding: '10px 16px', borderColor: 'rgba(251,191,36,0.4)' }}>
+          <span className="small">⚡ <b>Unlimited AI doubts</b> — AI Power Pack active. Koi daily cap nahi.</span>
         </div>
       )}
 
