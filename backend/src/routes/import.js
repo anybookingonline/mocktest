@@ -78,6 +78,11 @@ router.post('/pdf', platformOnly, uploadLimiter(), upload.single('file'), async 
 // Gemini Vision + DeepSeek pipeline (dedup, syllabus mapping, persistence).
 // opts.stageOnly: park the extraction in the review queue (pdf_question_staging)
 // instead of publishing to the shared bank — institute self-serve imports.
+//
+// Retry note: transient provider errors (Gemini 503 "high demand" etc.) are
+// retried inside the HTTP layer now (postJsonWithRetry). If processing still
+// fails, status='failed' + error text is stored and the admin can simply
+// re-upload — the dedup hash makes re-uploading safe.
 export async function processPdf(importId, examId, buffer, filePath, opts = {}) {
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(examId)
   try {

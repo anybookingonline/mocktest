@@ -174,6 +174,30 @@ async function postJson(url, headers, body, timeoutMs = 120000) {
   }
 }
 
+// Provider-side capacity errors (Gemini 503 "high demand", 429 rate limit,
+// gateway blips) are transient by nature — the API literally says "try again
+// later". Retry those automatically with linear backoff instead of failing
+// the whole task (a PDF import used to die on the first 503).
+const TRANSIENT_STATUS = [429, 500, 502, 503, 504]
+
+async function postJsonWithRetry(url, headers, body, timeoutMs = 120000, { attempts = 3, baseDelayMs = 5000, label = 'ai' } = {}) {
+  let lastErr
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await postJson(url, headers, body, timeoutMs)
+    } catch (e) {
+      lastErr = e
+      const msg = String(e.message || '')
+      const transient = TRANSIENT_STATUS.some((s) => msg.includes(`HTTP ${s}`))
+      if (!transient || i === attempts) throw e
+      const delay = baseDelayMs * i // 5s, 10s, …
+      console.warn(`[${label}] transient error (attempt ${i}/${attempts}): ${msg.slice(0, 160)} — retrying in ${delay / 1000}s`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  throw lastErr
+}
+
 // --------------------------- OpenAI-compatible ------------------------------
 
 async function callOpenAICompatible({ baseUrl, apiKey, model, system, messages, json = false, temperature = 0.7, extraHeaders = {}, maxTokens = 4096 }) {
@@ -249,7 +273,7 @@ async function callGemini({ model, system, messages, parts = [], json = false, t
   }
   if (json) payload.generationConfig.responseMimeType = 'application/json'
 
-  const data = await postJson(url, {}, payload)
+  const data = await postJsonWithRetry(url, {}, payload, { label: 'gemini' })
   return data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
 }
 
@@ -368,7 +392,9 @@ export async function visionExtract({ buffer, mimeType, prompt, model = null }) 
     generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
   }
   const start = Date.now()
-  const data = await postJson(url, {}, payload, 300000)
+  // Vision is the ONLY step that can read PDFs (no provider fallback exists
+  // for it), so give it the most patient retry budget: 4 attempts over ~30s.
+  const data = await postJsonWithRetry(url, {}, payload, 300000, { attempts: 4, baseDelayMs: 5000, label: 'gemini-vision' })
   const out = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
   logAi('vision', 'gemini', m, 'ok', Date.now() - start, null)
   const parsed = extractJson(out)
