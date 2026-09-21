@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
-import { Badge, useToast } from '../../components/ui.jsx'
+import { Badge, useToast, examIcon } from '../../components/ui.jsx'
 import { useLang } from '../../context/LangContext.jsx'
 
 const MODES = [
@@ -83,7 +83,7 @@ export default function Practice() {
             <div key={e.id} className={`card hover ${examId === e.id ? 'selected' : ''}`}
               style={{ padding: 12, textAlign: 'center', cursor: 'pointer', ...(examId === e.id ? { borderColor: 'var(--accent)', background: 'rgba(99,102,241,0.12)' } : {}) }}
               onClick={() => { setExamId(e.id); setSelected({}) }}>
-              <div style={{ fontSize: 24 }}>{e.icon || '🎯'}</div>
+              <div style={{ fontSize: 24 }}>{examIcon(e.icon)}</div>
               <b className="small">{e.name}</b>
             </div>
           ))}

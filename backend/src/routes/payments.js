@@ -15,8 +15,8 @@ import { sendPaymentReceiptEmail } from '../utils/email.js'
 const router = Router()
 
 const PLAN_ID = 'retention_1y'
-const API_URL = process.env.BACKEND_URL || 'http://localhost:3001'
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+const API_URL = process.env.BACKEND_URL || 'https://aisepadho.com'
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.aisepadho.com'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads')

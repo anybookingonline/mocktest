@@ -47,10 +47,22 @@ const seed = async () => {
   // Seed exams with FULL syllabus (subject → chapter → topics).
   // Idempotent: ON CONFLICT DO NOTHING throughout, safe to re-run anytime —
   // existing installs gain the missing chapters/topics on next seed run.
+  // Legacy word icons used by older seeds — migrated to emoji on each run
+  // (only exact matches are touched; admin-customized icons are preserved).
+  const LEGACY_ICONS = {
+    'JEE-MAIN': ['gear'],
+    NEET: ['stethoscope', 'dna'],
+    'SSC-CGL': ['gov', 'book'],
+    'BANK-PO': ['bank', 'building-2'],
+    UPSC: ['landmark'],
+    CAT: ['chart', 'graduation-cap'],
+    GATE: ['book', 'wrench'],
+    CUET: ['cap', 'school']
+  }
   const exams = [
     {
       code: 'JEE-MAIN', name: 'JEE Main', duration_minutes: 180, total_questions: 90, marks_per_question: 4, negative_marks: 1,
-      icon: 'gear', description: 'Joint Entrance Examination Main for engineering aspirants',
+      icon: '⚙️', description: 'Joint Entrance Examination Main for engineering aspirants',
       subjects: [
         { name: 'Physics', chapters: [
           { name: 'Mechanics', topics: ['Laws of Motion', 'Work, Energy and Power', 'Rotational Motion', 'Kinematics', 'Gravitation', 'Units and Measurements'] },
@@ -76,7 +88,7 @@ const seed = async () => {
     },
     {
       code: 'NEET', name: 'NEET', duration_minutes: 200, total_questions: 180, marks_per_question: 4, negative_marks: 1,
-      icon: 'stethoscope', description: 'National Eligibility cum Entrance Test for medical aspirants',
+      icon: '🧬', description: 'National Eligibility cum Entrance Test for medical aspirants',
       subjects: [
         { name: 'Physics', chapters: [
           { name: 'Mechanics', topics: ['Kinematics', 'Laws of Motion', 'Work, Energy and Power', 'Rotational Motion', 'Gravitation', 'Mechanical Properties of Solids and Fluids'] },
@@ -99,7 +111,7 @@ const seed = async () => {
     },
     {
       code: 'SSC-CGL', name: 'SSC CGL', duration_minutes: 60, total_questions: 100, marks_per_question: 2, negative_marks: 0.5,
-      icon: 'gov', description: 'Staff Selection Commission — Combined Graduate Level Examination',
+      icon: '📚', description: 'Staff Selection Commission — Combined Graduate Level Examination',
       subjects: [
         { name: 'Quantitative Aptitude', chapters: [
           { name: 'Arithmetic', topics: ['Percentage', 'Time and Work', 'Ratio and Proportion', 'Profit and Loss', 'Simple and Compound Interest', 'Time, Speed and Distance', 'Average', 'Mixtures and Alligation', 'Ages'] },
@@ -123,7 +135,7 @@ const seed = async () => {
     },
     {
       code: 'BANK-PO', name: 'Bank PO / IBPS', duration_minutes: 60, total_questions: 100, marks_per_question: 1, negative_marks: 0.25,
-      icon: 'bank', description: 'IBPS/SBI Probationary Officer and Clerk examinations',
+      icon: '🏦', description: 'IBPS/SBI Probationary Officer and Clerk examinations',
       subjects: [
         { name: 'Quantitative Aptitude', chapters: [
           { name: 'Arithmetic', topics: ['Simplification', 'Data Interpretation', 'Percentage', 'Profit and Loss', 'Time and Work', 'Time, Speed and Distance', 'Simple and Compound Interest', 'Ages', 'Boats and Streams', 'Probability'] },
@@ -146,7 +158,7 @@ const seed = async () => {
     },
     {
       code: 'UPSC', name: 'UPSC CSE', duration_minutes: 120, total_questions: 100, marks_per_question: 2, negative_marks: 0.66,
-      icon: 'landmark', description: 'UPSC Civil Services Examination — Prelims',
+      icon: '🏛️', description: 'UPSC Civil Services Examination — Prelims',
       subjects: [
         { name: 'General Studies', chapters: [
           { name: 'History', topics: ['Ancient India', 'Modern India', 'Medieval India', 'Art and Culture', 'Freedom Struggle'] },
@@ -166,7 +178,7 @@ const seed = async () => {
     },
     {
       code: 'CAT', name: 'CAT', duration_minutes: 120, total_questions: 66, marks_per_question: 3, negative_marks: 1,
-      icon: 'chart', description: 'Common Admission Test for MBA programmes',
+      icon: '🐱', description: 'Common Admission Test for MBA programmes',
       subjects: [
         { name: 'Quant', chapters: [
           { name: 'Arithmetic', topics: ['Percentages', 'Profit and Loss', 'Mixtures', 'Time and Work', 'Time, Speed and Distance', 'Ratios and Proportion', 'Averages', 'Interest'] },
@@ -186,7 +198,7 @@ const seed = async () => {
     },
     {
       code: 'GATE', name: 'GATE', duration_minutes: 180, total_questions: 65, marks_per_question: 2, negative_marks: 0.66,
-      icon: 'book', description: 'Graduate Aptitude Test in Engineering',
+      icon: '🔧', description: 'Graduate Aptitude Test in Engineering',
       subjects: [
         { name: 'Engineering Maths', chapters: [
           { name: 'Maths', topics: ['Linear Algebra', 'Calculus', 'Probability', 'Differential Equations', 'Complex Variables', 'Numerical Methods'] }
@@ -202,7 +214,7 @@ const seed = async () => {
     },
     {
       code: 'CUET', name: 'CUET', duration_minutes: 60, total_questions: 50, marks_per_question: 5, negative_marks: 0,
-      icon: 'cap', description: 'Common University Entrance Test for undergraduate admissions',
+      icon: '🎓', description: 'Common University Entrance Test for undergraduate admissions',
       subjects: [
         { name: 'General Test', chapters: [
           { name: 'GK', topics: ['Current Affairs', 'Static GK'] },
@@ -231,6 +243,14 @@ const seed = async () => {
     await db.prepare(`INSERT INTO exams (code, name, description, icon, duration_minutes, total_questions, marks_per_question, negative_marks, subjects_json, is_active)
       VALUES (?,?,?,?,?,?,?,?,?,1) ON CONFLICT(code) DO NOTHING`)
       .run(e.code, e.name, e.description, e.icon, e.duration_minutes, e.total_questions, e.marks_per_question, e.negative_marks, JSON.stringify(e.subjects.map(s => s.name)))
+    // One-time icon migration: production rows were seeded with word icons
+    // ('gear', 'bank', 'landmark'…) which render as raw text on mobile.
+    // Only touch rows still carrying the exact legacy word — admin-customized
+    // icons (or already-emoji values) are left alone.
+    const legacyIcons = LEGACY_ICONS[e.code]
+    if (legacyIcons?.length) {
+      await db.prepare(`UPDATE exams SET icon = ? WHERE code = ? AND icon IN (${legacyIcons.map(() => '?').join(',')})`).run(e.icon, e.code, ...legacyIcons)
+    }
     const exam = await db.prepare('SELECT * FROM exams WHERE code = ?').get(e.code)
     for (const [si, s] of e.subjects.entries()) {
       await db.prepare(`INSERT INTO subjects (exam_id, name, sort_order) VALUES (?, ?, ?) ON CONFLICT(exam_id, name) DO NOTHING`)

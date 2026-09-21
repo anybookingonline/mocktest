@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { AdminLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
-import { Badge, Modal, useToast, fmtDate } from '../../components/ui.jsx'
+import { Badge, Modal, useToast, fmtDate, examIcon } from '../../components/ui.jsx'
 
 const BLANK = { code: '', name: '', description: '', icon: '🎯', duration_minutes: 180, total_questions: 100, marks_per_question: 4, negative_marks: 1, subjects: [] }
 
@@ -58,7 +58,7 @@ export default function AdminExams() {
         {exams.map((e) => (
           <div key={e.id} className="card hover">
             <div className="spread mb">
-              <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
+              <div style={{ fontSize: 26 }}>{examIcon(e.icon)}</div>
               <div className="row"><Badge kind={e.is_active ? 'green' : 'gray'}>{e.is_active ? 'Active' : 'Inactive'}</Badge></div>
             </div>
             <b>{e.name}</b>

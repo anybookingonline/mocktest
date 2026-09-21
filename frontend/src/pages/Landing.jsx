@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
+import { examIcon } from '../components/ui.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import SalesChat from '../components/SalesChat.jsx'
 
@@ -103,7 +104,7 @@ export default function Landing() {
         <div className="grid grid-4 mb">
           {exams.map((e) => (
             <div key={e.code} className="card hover" onClick={() => nav('/register')} style={{ cursor: 'pointer', textAlign: 'center' }}>
-              <div style={{ fontSize: 30 }}>{e.icon}</div>
+              <div style={{ fontSize: 30 }}>{examIcon(e.icon)}</div>
               <b style={{ display: 'block', marginTop: 6 }}>{e.label}</b>
               <div className="tiny">{e.noteKey ? t(e.noteKey) : (e.note || '')}</div>
             </div>

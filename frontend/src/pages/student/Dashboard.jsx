@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
-import { Badge, Progress, Skeleton, fmtDuration, statColor, timeAgo } from '../../components/ui.jsx'
+import { Badge, Progress, Skeleton, fmtDuration, statColor, timeAgo, examIcon } from '../../components/ui.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 
 export default function Dashboard() {
@@ -114,7 +114,7 @@ export default function Dashboard() {
                   <div className="grid grid-4">
                     {otherExams.map((e) => (
                       <div key={e.id} className="card hover" style={{ padding: 14, textAlign: 'center', cursor: 'pointer', opacity: 0.85 }} onClick={() => setExam(e)}>
-                        <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
+                        <div style={{ fontSize: 26 }}>{examIcon(e.icon)}</div>
                         <b className="small" style={{ display: 'block' }}>{e.name}</b>
                         <div className="tiny">{e.total_questions} Q · {e.duration_minutes} min</div>
                       </div>
@@ -130,7 +130,7 @@ export default function Dashboard() {
               <div className="grid grid-4">
                 {exams.map((e) => (
                   <div key={e.id} className="card hover" style={{ padding: 14, textAlign: 'center', cursor: 'pointer' }} onClick={() => setExam(e)}>
-                    <div style={{ fontSize: 26 }}>{e.icon || '🎯'}</div>
+                    <div style={{ fontSize: 26 }}>{examIcon(e.icon)}</div>
                     <b className="small" style={{ display: 'block' }}>{e.name}</b>
                     <div className="tiny">{e.total_questions} Q · {e.duration_minutes} min</div>
                   </div>

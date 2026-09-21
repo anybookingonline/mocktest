@@ -230,7 +230,7 @@ async function callOpenRouter({ model, system, messages, json, temperature, maxT
     baseUrl: PROVIDERS.openrouter.base, apiKey,
     model: model || await getConfig('openrouter.model', PROVIDERS.openrouter.defaultModel),
     system, messages, json, temperature, maxTokens,
-    extraHeaders: { 'HTTP-Referer': 'http://localhost:3001', 'X-Title': 'ExamAI Platform' }
+    extraHeaders: { 'HTTP-Referer': process.env.APP_URL || 'https://www.aisepadho.com', 'X-Title': 'ExamAI Platform' }
   })
   return data.choices?.[0]?.message?.content ?? ''
 }

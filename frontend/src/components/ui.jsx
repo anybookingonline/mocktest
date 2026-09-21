@@ -102,6 +102,38 @@ export function diffBadge(diff) {
   return { easy: 'green', medium: 'amber', hard: 'red' }[diff] || 'gray'
 }
 
+// ---------------------------------------------------------------------------
+// Exam icon helper — DB icon column me kabhi words save hue the ('gear',
+// 'bank', 'landmark', 'cat', 'building'…) jo mobile par raw text render ho
+// rahe the. Jo value pehle se emoji nahi hai use ek canonical map se emoji
+// me translate karte hain; emoji values untouched pass through hoti hain.
+// ---------------------------------------------------------------------------
+const EXAM_ICON_MAP = {
+  gear: '⚙️', cog: '⚙️', stethoscope: '🩺', medical: '🧬', health: '🩺',
+  gov: '🏛️', government: '🏛️', landmark: '🏛️', building: '🏛️', bank: '🏦',
+  chart: '📊', cat: '🐱', book: '📚', cap: '🎓', graduate: '🎓',
+  flask: '🧪', science: '🧪', target: '🎯', rocket: '🚀', globe: '🌍',
+  calc: '🧮', calculator: '🧮', scale: '⚖️', law: '⚖️', shield: '🛡️',
+  brain: '🧠', pen: '✍️', pencil: '✍️', trophy: '🏆', star: '⭐',
+  // Lucide/heroicon-style DB values (production rows ke exact names):
+  'graduationcap': '🎓', 'school': '🏫', 'wrench': '🔧', 'dna': '🧬',
+  'building2': '🏦', 'landmarkicon': '🏛️', 'bookopen': '📖',
+  'atom': '⚛️', 'briefcase': '💼', 'calculatoricon': '🧮', 'award': '🏆',
+  'medal': '🏅', 'library': '📚', 'microscope': '🔬', 'activity': '🩺',
+  'map': '🗺️', 'monitor': '💻', 'code': '💻', 'terminal': '💻',
+  'piechart': '📊', 'linechart': '📈', 'barchart': '📊', 'scaleicon': '⚖️',
+  'buildingbank': '🏦', 'coins': '🪙', 'graduationcapicon': '🎓'
+}
+
+export function examIcon(icon, fallback = '🎯') {
+  if (!icon) return fallback
+  const raw = String(icon).trim()
+  // Emoji / pictograph (non-ASCII) hai ya nahi — words ko map karna hai, emojis ko nahi.
+  if (/\P{ASCII}/u.test(raw)) return raw
+  const key = raw.toLowerCase().replace(/[\s_-]+/g, '')
+  return EXAM_ICON_MAP[key] || fallback
+}
+
 export function qTypeLabel(t) {
   return { single: 'MCQ', multiple: 'Multi', numerical: 'Numeric', integer: 'Integer' }[t] || t
 }
