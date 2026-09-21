@@ -359,12 +359,12 @@ router.get('/provider-status', async (req, res) => {
 })
 
 // GET /api/ai/custom-presets (admin) - quick presets for the custom provider
-router.get('/custom-presets', platformOnly, (req, res) => {
+router.get('/custom-presets', authRequired, platformOnly, (req, res) => {
   res.json({ presets: CUSTOM_PRESETS })
 })
 
 // POST /api/ai/config (admin) - save provider settings
-router.post('/config', platformOnly, aiLimiter(), async (req, res) => {
+router.post('/config', authRequired, platformOnly, aiLimiter(), async (req, res) => {
   const b = req.body || {}
   const allowed = ['ai.provider', 'ai.fallbackEnabled', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model', 'custom.name', 'custom.baseUrl', 'custom.apiKey', 'custom.model', 'custom.enabled',
     'features.voiceDoubts', 'features.telegramBot', 'openai.apiKey', 'telegram.botToken', 'telegram.botUsername']

@@ -310,6 +310,20 @@ export default function AdminAI() {
           </label>
         </div>
         <div className="field-row">
+          <label className="field"><span>💎 AI Max — ON/OFF (top tier: Power + Voice included)</span>
+            <select className="select" value={cfg['addons.aiMaxEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.aiMaxEnabled', e.target.value)}>
+              <option value="true">On — sell to students</option>
+              <option value="false">Off — hidden from Plans page</option>
+            </select>
+          </label>
+          <label className="field"><span>AI Max — price (₹)</span>
+            <input type="number" className="input" value={cfg['addons.aiMaxPrice'] || 399} onChange={(e) => set('addons.aiMaxPrice', e.target.value)} />
+          </label>
+          <label className="field"><span>AI Max — validity (days)</span>
+            <input type="number" className="input" value={cfg['addons.aiMaxDays'] || 365} onChange={(e) => set('addons.aiMaxDays', e.target.value)} />
+          </label>
+        </div>
+        <div className="field-row">
           <label className="field"><span>🎙️ Voice Doubts — ON/OFF</span>
             <select className="select" value={cfg['addons.voiceEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.voiceEnabled', e.target.value)}>
               <option value="true">On — sell to students</option>

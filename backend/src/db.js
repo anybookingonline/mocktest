@@ -101,9 +101,14 @@ function buildQuery(sql, args) {
   let last = 0
   let n = 0
   let pi = 0
-  const re = /\?|@([A-Za-z_][A-Za-z0-9_]*)/g
+  // One linear scan: string literals ('…', with '' escape), -- comments and
+  // /*…*/ blocks are matched as tokens and copied verbatim — a '?' or '@word'
+  // inside them is data, not a placeholder. (Found the hard way: the email
+  // literal 't2@test.local' had '@test' rewritten into NULL.)
+  const re = /'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\/|\?|@([A-Za-z_][A-Za-z0-9_]*)/g
   let m
   while ((m = re.exec(text)) !== null) {
+    if (m[0][0] === "'" || m[0].startsWith('--') || m[0].startsWith('/*')) continue
     out += text.slice(last, m.index)
     n += 1
     out += `$${n}`

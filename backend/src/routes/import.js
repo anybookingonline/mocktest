@@ -30,7 +30,7 @@ const router = express.Router()
 router.use(authRequired)
 
 // POST /api/import/pdf - upload & process exam PDF via Gemini Vision + DeepSeek
-router.post('/pdf', platformOnly, uploadLimiter(), upload.single('file'), async (req, res) => {
+router.post('/pdf', authRequired, platformOnly, uploadLimiter(), upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF file required' })
   const examId = Number(req.body?.examId)
   if (!examId) return res.status(400).json({ error: 'examId required' })
@@ -120,13 +120,13 @@ export async function processPdf(importId, examId, buffer, filePath, opts = {}) 
 }
 
 // GET /api/import/list - admin list of imports
-router.get('/list', platformOnly, async (req, res) => {
+router.get('/list', authRequired, platformOnly, async (req, res) => {
   const rows = await db.prepare('SELECT * FROM pdf_imports ORDER BY created_at DESC LIMIT 100').all()
   res.json({ imports: rows })
 })
 
 // GET /api/import/:id - status of an import
-router.get('/:id', platformOnly, async (req, res) => {
+router.get('/:id', authRequired, platformOnly, async (req, res) => {
   const row = await db.prepare('SELECT * FROM pdf_imports WHERE id = ?').get(req.params.id)
   if (!row) return res.status(404).json({ error: 'Import not found' })
   res.json({ import: row })

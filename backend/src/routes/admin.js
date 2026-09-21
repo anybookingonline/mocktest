@@ -97,8 +97,9 @@ router.get('/reports', async (req, res) => {
 router.get('/settings', async (req, res) => {
   const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'platform.logoUrl', 'platform.domain', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'monetization.gateways', 'monetization.provider', 'monetization.price', 'monetization.currency', 'monetization.retentionDays', 'monetization.freeHoldHours',
-    'addons.aiPowerPrice', 'addons.aiPowerDays', 'addons.voicePrice', 'addons.voiceDays',
-    'addons.caPrice', 'addons.caDays', 'addons.focusPrice', 'addons.focusDays',
+    'addons.aiPowerEnabled', 'addons.aiPowerPrice', 'addons.aiPowerDays', 'addons.aiMaxEnabled', 'addons.aiMaxPrice', 'addons.aiMaxDays',
+    'addons.voiceEnabled', 'addons.voicePrice', 'addons.voiceDays',
+    'addons.caEnabled', 'addons.caPrice', 'addons.caDays', 'addons.focusEnabled', 'addons.focusPrice', 'addons.focusDays',
     'features.currentAffairs', 'features.focusAreas',
     'features.groupStudy', 'features.groupDiscussions', 'features.battles',
     'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays',

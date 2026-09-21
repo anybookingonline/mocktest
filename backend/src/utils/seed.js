@@ -343,6 +343,13 @@ const seed = async () => {
     }
   }
 
+  // Cleanup: pehle ke buggy syllabus-save se '[object Object]' naam ke topics
+  // ban chuke honge (UI objects ko String() karke likh raha tha). Sirf
+  // placeholder naam wale topics delete karo — inka koi question linked nahi
+  // hota, aur real data untouched rehta hai.
+  const bogus = await db.prepare(`DELETE FROM topics WHERE name = '[object Object]' OR name LIKE '[object%' RETURNING id`).all()
+  if (bogus.length) console.log(`[seed] Removed ${bogus.length} '[object Object]' placeholder topic(s)`)
+
   console.log('Seed complete.')
   console.log('  Admin login: admin@examai.app (password = ADMIN_PASSWORD env)')
   console.log('  Students register in-app — no demo accounts are seeded.')

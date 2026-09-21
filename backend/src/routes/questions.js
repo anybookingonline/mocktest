@@ -76,7 +76,7 @@ router.get('/:id', async (req, res) => {
 })
 
 // POST /api/questions (admin) - create/import manual question
-router.post('/', platformOnly, async (req, res) => {
+router.post('/', authRequired, platformOnly, async (req, res) => {
   const b = req.body || {}
   const { examId, subjectId, chapterId, topicId } = b
   if (!examId || !b.question) return res.status(400).json({ error: 'examId and question text required' })
@@ -93,7 +93,7 @@ router.post('/', platformOnly, async (req, res) => {
 })
 
 // PUT /api/questions/:id (admin)
-router.put('/:id', platformOnly, async (req, res) => {
+router.put('/:id', authRequired, platformOnly, async (req, res) => {
   const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id)
   if (!q) return res.status(404).json({ error: 'Question not found' })
   const b = req.body || {}
@@ -108,7 +108,7 @@ router.put('/:id', platformOnly, async (req, res) => {
 })
 
 // DELETE /api/questions/:id (admin)
-router.delete('/:id', platformOnly, async (req, res) => {
+router.delete('/:id', authRequired, platformOnly, async (req, res) => {
   const r = await db.prepare('DELETE FROM questions WHERE id = ?').run(req.params.id)
   res.json({ deleted: r.changes })
 })

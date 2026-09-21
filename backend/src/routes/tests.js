@@ -156,7 +156,7 @@ router.post('/', async (req, res) => {
 // ~₹288/day of AI spend (5 generations / 5 min × ₹12) with zero revenue
 // attached. Now: platform-admin tool only — students never trigger paid
 // generation; they consume the questions already persisted in the bank.
-router.post('/ai', platformOnly, aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
+router.post('/ai', authRequired, platformOnly, aiLimiter({ max: 5, windowSec: 300 }), async (req, res) => {
   const b = req.body || {}
   if (!b.examId) return res.status(400).json({ error: 'examId required' })
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)
@@ -192,7 +192,7 @@ router.post('/ai', platformOnly, aiLimiter({ max: 5, windowSec: 300 }), async (r
 })
 
 // DELETE /api/tests/:id (admin)
-router.delete('/:id', platformOnly, async (req, res) => {
+router.delete('/:id', authRequired, platformOnly, async (req, res) => {
   await db.prepare('DELETE FROM test_questions WHERE test_id = ?').run(req.params.id)
   const r = await db.prepare('DELETE FROM tests WHERE id = ?').run(req.params.id)
   res.json({ deleted: r.changes })

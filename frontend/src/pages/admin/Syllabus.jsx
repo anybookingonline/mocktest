@@ -11,12 +11,26 @@ export default function AdminSyllabus() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => { api.get('/exams').then((d) => { setExams(d.exams); if (d.exams.length) setExamId(String(d.exams[0].id)) }) }, [])
-  useEffect(() => { if (examId) api.get(`/exams/${examId}/syllabus`).then((d) => setSyllabus(d.syllabus)).catch(() => {}) }, [examId])
+  useEffect(() => {
+    if (!examId) return
+    api.get(`/exams/${examId}/syllabus`).then((d) => setSyllabus(normalize(d.syllabus))).catch(() => {})
+  }, [examId])
+
+  // API topics ko full rows (id, name, questionCount) ke roop me bhejti hai;
+  // editor unhe simple strings ke roop me edit karta hai — load par normalize.
+  const normalize = (subs) => (subs || []).map((s) => ({
+    name: s.name || '',
+    chapters: (s.chapters || []).map((c) => ({
+      name: c.name || '',
+      topics: (c.topics || []).map((t) => (typeof t === 'string' ? t : t?.name || '')).filter(Boolean)
+    }))
+  }))
 
   const save = async () => {
     setBusy(true)
     try {
-      await api.post(`/exams/${examId}/syllabus`, { subjects: syllabus })
+      // Double-safe: save se pehle bhi strings me serialize karo.
+      await api.post(`/exams/${examId}/syllabus`, { subjects: normalize(syllabus) })
       toast('Syllabus saved', 'ok')
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }

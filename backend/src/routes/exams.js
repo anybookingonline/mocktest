@@ -61,7 +61,7 @@ router.get('/:id/syllabus', authRequired, async (req, res) => {
 // ---- Admin: manage exams & syllabus ----
 
 // POST /api/exams  (admin)
-router.post('/', platformOnly, async (req, res) => {
+router.post('/', authRequired, platformOnly, async (req, res) => {
   const b = req.body || {}
   const code = String(b.code || '').trim().toUpperCase()
   if (!code || !b.name) return res.status(400).json({ error: 'code and name required' })
@@ -70,7 +70,7 @@ router.post('/', platformOnly, async (req, res) => {
   const r = await db.prepare(`INSERT INTO exams (code, name, description, icon, duration_minutes, total_questions, marks_per_question, negative_marks, subjects_json, is_active)
     VALUES (?,?,?,?,?,?,?,?,?,?)`)
     .run(code, b.name, b.description || '', b.icon || '🎯', Number(b.duration_minutes) || 180, Number(b.total_questions) || 100,
-      Number(b.marks_per_question) ?? 4, Number(b.negative_marks) ?? 1, JSON.stringify(b.subjects || []), b.is_active === false ? 0 : 1)
+      Number(b.marks_per_question ?? 4), Number(b.negative_marks ?? 1), JSON.stringify(b.subjects || []), b.is_active === false ? 0 : 1)
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(r.lastInsertRowid)
   if (Array.isArray(b.subjects)) await seedSyllabus(exam.id, b.subjects)
   await cacheDel('exams:list')
@@ -78,7 +78,7 @@ router.post('/', platformOnly, async (req, res) => {
 })
 
 // PUT /api/exams/:id (admin)
-router.put('/:id', platformOnly, async (req, res) => {
+router.put('/:id', authRequired, platformOnly, async (req, res) => {
   const b = req.body || {}
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(req.params.id)
   if (!exam) return res.status(404).json({ error: 'Exam not found' })
@@ -94,14 +94,14 @@ router.put('/:id', platformOnly, async (req, res) => {
 })
 
 // DELETE /api/exams/:id (admin)
-router.delete('/:id', platformOnly, async (req, res) => {
+router.delete('/:id', authRequired, platformOnly, async (req, res) => {
   const r = await db.prepare('DELETE FROM exams WHERE id = ?').run(req.params.id)
   await cacheDel('exams:list')
   res.json({ deleted: r.changes })
 })
 
 // POST /api/exams/:id/syllabus (admin) - upsert syllabus
-router.post('/:id/syllabus', platformOnly, async (req, res) => {
+router.post('/:id/syllabus', authRequired, platformOnly, async (req, res) => {
   const examId = Number(req.params.id)
   if (!await db.prepare('SELECT id FROM exams WHERE id = ?').get(examId)) return res.status(404).json({ error: 'Exam not found' })
   const subjects = req.body?.subjects || []
@@ -111,16 +111,31 @@ router.post('/:id/syllabus', platformOnly, async (req, res) => {
 })
 
 async function seedSyllabus(examId, subjects) {
+  // Defensive: topics kabhi string aate hain kabhi full rows ({name,…}) —
+  // dono shapes se saaf naam nikalo, '[object Object]' DB me kabhi na likha jaye.
+  const topicName = (t) => {
+    if (typeof t === 'string') return t.trim()
+    const n = t?.name
+    return (typeof n === 'string' ? n : n != null ? String(n) : '').trim()
+  }
   for (const [si, s] of subjects.entries()) {
-    const sr = await db.prepare('INSERT INTO subjects (exam_id, name, sort_order) VALUES (?, ?, ?) ON CONFLICT(exam_id, name) DO NOTHING RETURNING id').run(examId, String(s.name), si)
+    const sName = String(s?.name ?? '').trim()
+    if (!sName) continue
+    const sr = await db.prepare('INSERT INTO subjects (exam_id, name, sort_order) VALUES (?, ?, ?) ON CONFLICT(exam_id, name) DO NOTHING RETURNING id').run(examId, sName, si)
     let subjectId = sr.lastInsertRowid
-    if (sr.changes === 0) subjectId = (await db.prepare('SELECT id FROM subjects WHERE exam_id = ? AND name = ?').get(examId, String(s.name))).id
+    if (sr.changes === 0) subjectId = (await db.prepare('SELECT id FROM subjects WHERE exam_id = ? AND name = ?').get(examId, sName)).id
     for (const [ci, c] of (s.chapters || []).entries()) {
-      const cr = await db.prepare('INSERT INTO chapters (subject_id, exam_id, name, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(subject_id, name) DO NOTHING RETURNING id').run(subjectId, examId, String(c.name), ci)
+      const cName = String(c?.name ?? '').trim()
+      if (!cName) continue
+      const cr = await db.prepare('INSERT INTO chapters (subject_id, exam_id, name, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(subject_id, name) DO NOTHING RETURNING id').run(subjectId, examId, cName, ci)
       let chapterId = cr.lastInsertRowid
-      if (cr.changes === 0) chapterId = (await db.prepare('SELECT id FROM chapters WHERE subject_id = ? AND name = ?').get(subjectId, String(c.name))).id
-      for (const [ti, t] of (c.topics || []).entries()) {
-        await db.prepare('INSERT INTO topics (chapter_id, exam_id, name, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(chapter_id, name) DO NOTHING').run(chapterId, examId, String(t), ti)
+      if (cr.changes === 0) chapterId = (await db.prepare('SELECT id FROM chapters WHERE subject_id = ? AND name = ?').get(subjectId, cName)).id
+      let ti = 0
+      for (const t of (c.topics || [])) {
+        const tName = topicName(t)
+        if (!tName) continue
+        await db.prepare('INSERT INTO topics (chapter_id, exam_id, name, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(chapter_id, name) DO NOTHING').run(chapterId, examId, tName, ti)
+        ti++
       }
     }
   }
