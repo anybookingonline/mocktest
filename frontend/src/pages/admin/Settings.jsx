@@ -25,6 +25,8 @@ export default function AdminSettings() {
   const [storage, setStorage] = useState(null)
   const [b2Testing, setB2Testing] = useState(false)
   const [b2Result, setB2Result] = useState(null)
+  const [maintOn, setMaintOn] = useState(false)
+  const [maintBusy, setMaintBusy] = useState(false)
 
   useEffect(() => {
     api.get('/admin/settings').then((d) => {
@@ -35,7 +37,24 @@ export default function AdminSettings() {
       setCfg(s)
     }).catch(() => {})
     api.get('/admin/storage').then((d) => setStorage(d.storage)).catch(() => {})
+    api.get('/admin/maintenance').then((d) => setMaintOn(!!d.enabled)).catch(() => {})
   }, [])
+
+  // Instant effect: flip the flag server-side immediately so students see the
+  // maintenance page within seconds (the app polls /api/meta/status every 30s).
+  const toggleMaintenance = async () => {
+    const next = !maintOn
+    setMaintBusy(true)
+    try {
+      await api.put('/admin/settings', {
+        'maintenance.enabled': next,
+        'maintenance.message': cfg?.['maintenance.message'] || '',
+        'maintenance.eta': cfg?.['maintenance.eta'] || ''
+      })
+      setMaintOn(next)
+      toast(next ? '🛠️ Maintenance mode ON — students ko maintenance page dikh raha hoga' : '✅ Maintenance mode OFF — app wapas live hai', next ? 'ok' : 'ok')
+    } catch (e) { toast(e.message, 'err') } finally { setMaintBusy(false) }
+  }
 
   const testB2 = async () => {
     setB2Testing(true); setB2Result(null)
@@ -105,6 +124,34 @@ export default function AdminSettings() {
   return (
     <AdminLayout title="Platform Settings">
       <div className="card" style={{ maxWidth: 720 }}>
+        <div className="spread" style={{ alignItems: 'center', marginBottom: 8 }}>
+          <b className="small" style={{ display: 'block' }}>🛠️ Maintenance mode</b>
+          <span className="chip" style={{
+            background: maintOn ? 'rgba(248,113,113,0.15)' : 'rgba(74,222,128,0.12)',
+            color: maintOn ? '#f87171' : '#4ade80', border: 'none', fontWeight: 700
+          }}>{maintOn ? '● MAINTENANCE ON' : '● LIVE'}</span>
+        </div>
+        <p className="tiny muted mb">ON karte hi saare students aur visitors ko maintenance landing page dikhne lagega — aap (admin) app me hi rahoge, sab kuch test kar sakte ho. Updates deploy karne, DB migrate karne ya server restart ke liye use karo.</p>
+        <div className="field-row">
+          <label className="field"><span>Message (optional — page par dikhta hai)</span>
+            <input className="input" placeholder="Naye features add kar rahe hain — thodi der me wapas!" value={cfg['maintenance.message'] || ''} onChange={set('maintenance.message')} maxLength={300} />
+          </label>
+          <label className="field"><span>ETA (optional — e.g. 18:30)</span>
+            <input className="input" placeholder="18:30" value={cfg['maintenance.eta'] || ''} onChange={set('maintenance.eta')} maxLength={10} />
+          </label>
+        </div>
+        <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+          <button
+            className="btn"
+            style={maintOn ? { background: '#4ade80', color: '#052e16', fontWeight: 700 } : { background: '#f87171', color: '#fff', fontWeight: 700 }}
+            onClick={toggleMaintenance}
+            disabled={maintBusy}
+          >
+            {maintBusy ? 'Applying…' : maintOn ? '✅ Turn maintenance OFF' : '🛠️ Turn maintenance ON'}
+          </button>
+          <span className="tiny muted">Toggle dabate hi message/ETA bhi isi form se save ho jate hain — page par turant dikhte hain.</span>
+        </div>
+        <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Platform branding (poore app me live rebrand hota hai)</b>
         <label className="field"><span>App / platform name</span>
           <input className="input" value={cfg['platform.name']} onChange={set('platform.name')} placeholder="Aisepadho" />

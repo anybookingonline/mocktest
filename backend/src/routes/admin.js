@@ -108,6 +108,7 @@ router.get('/settings', async (req, res) => {
     'qr.upiId', 'qr.qrImage', 'qr.holderName', 'qr.note',
     'b2.keyId', 'b2.appKey', 'b2.bucketId', 'b2.bucketName', 'b2.publicBaseUrl',
     'exa.apiKey', 'exa.monthlyLimit', 'gravity.apiKey', 'features.contextualAds',
+    'maintenance.enabled', 'maintenance.message', 'maintenance.eta',
     'telegram.botToken', 'telegram.botUsername', 'telegram.webhookDomain']
   const out = {}
   for (const k of keys) out[k] = (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || ''
@@ -122,9 +123,29 @@ router.put('/settings', async (req, res) => {
   const SECRET_KEY = /(botToken|apiKey|keySecret|secretKey|webhookSecret|saltKey|appKey)$/
   for (const [k, v] of Object.entries(b)) {
     if (SECRET_KEY.test(k) && !String(v).trim()) continue
+    // Maintenance flag arrives as a boolean from the toggle UI — normalize to
+    // '1'/'0' so every reader (gate, status endpoint) can truthy-test it.
+    if (k === 'maintenance.enabled') {
+      await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, (v === true || v === 'true' || v === 1 || v === '1') ? '1' : '0')
+      continue
+    }
+    if (k === 'maintenance.message' || k === 'maintenance.eta') {
+      await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, String(v ?? '').slice(0, 300))
+      continue
+    }
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(k, String(v))
   }
   res.json({ saved: true })
+})
+
+// GET /api/admin/maintenance — lightweight status read for the toggle UI
+router.get('/maintenance', async (req, res) => {
+  const get = async (k) => (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || ''
+  res.json({
+    enabled: (await get('maintenance.enabled')) === '1',
+    message: await get('maintenance.message'),
+    eta: await get('maintenance.eta')
+  })
 })
 
 // POST /api/admin/reset-stats - reset usage counters

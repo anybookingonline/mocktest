@@ -188,7 +188,17 @@ const strings = {
     'auth.signup': 'Sign Up', 'auth.creating': 'Creating…', 'auth.already': 'Already registered?',
     'auth.toast.created': 'Account created!',
     'auth.joining': '🏫 Joining {inst} — account automatically linked!',
-    'auth.invite.bad': '⚠️ Invite code is invalid or expired — you can still register without a code.'
+    'auth.invite.bad': '⚠️ Invite code is invalid or expired — you can still register without a code.',
+
+    // — Maintenance mode —
+    'maint.title': "We'll be right back",
+    'maint.sub': '{brand} is under scheduled maintenance right now. Your data, tests and progress are all safe.',
+    'maint.note': 'Time noted — we open on time.',
+    'maint.pending': 'Updated tests and new features are on the way — see you soon!',
+    'maint.cta': 'Notify me',
+    'maint.thanks': "Thanks! We'll email you as soon as we're back.",
+    'maint.badEmail': 'Please enter a valid email address.',
+    'maint.contact': 'Need help? Contact support:'
   },
 
   hinglish: {
@@ -352,7 +362,17 @@ const strings = {
     'auth.signup': 'Sign Up', 'auth.creating': 'Creating…', 'auth.already': 'Pehle se registered?',
     'auth.toast.created': 'Account ban gaya!',
     'auth.joining': '🏫 Joining {inst} — account apne aap link ho jayega!',
-    'auth.invite.bad': '⚠️ Invite code invalid ya expired — bina code bhi register kar sakte ho.'
+    'auth.invite.bad': '⚠️ Invite code invalid ya expired — bina code bhi register kar sakte ho.',
+
+    // — Maintenance mode —
+    'maint.title': 'Hum thodi der me wapas aa rahe hain',
+    'maint.sub': '{brand} par abhi scheduled maintenance chal rahi hai. Aapka data, tests aur progress sab safe hain.',
+    'maint.note': 'Time note kar lo — time par khul jayega.',
+    'maint.pending': 'Naye tests aur features aa rahe hain — jaldi milte hain!',
+    'maint.cta': 'Notify karo',
+    'maint.thanks': 'Thanks! Wapas aate hi email kar denge.',
+    'maint.badEmail': 'Sahi email daalo.',
+    'maint.contact': 'Madad chahiye? Support se baat karo:'
   },
 
   hi: {
@@ -516,7 +536,17 @@ const strings = {
     'auth.signup': 'साइन अप', 'auth.creating': 'खाता बन रहा है…', 'auth.already': 'पहले से पंजीकृत हैं?',
     'auth.toast.created': 'खाता बन गया!',
     'auth.joining': '🏫 {inst} से जुड़ रहे हैं — खाता स्वतः लिंक हो जाएगा!',
-    'auth.invite.bad': '⚠️ इनवाइट कोड अमान्य या समाप्त — बिना कोड भी पंजीकरण कर सकते हैं।'
+    'auth.invite.bad': '⚠️ इनवाइट कोड अमान्य या समाप्त — बिना कोड भी पंजीकरण कर सकते हैं।',
+
+    // — Maintenance mode —
+    'maint.title': 'हम जल्द ही वापस आ रहे हैं',
+    'maint.sub': '{brand} पर अभी निर्धारित रखरखाव चल रहा है। आपका डेटा, टेस्ट और प्रगति सब सुरक्षित हैं।',
+    'maint.note': 'समय नोट कर लें — समय पर खुल जाएगा।',
+    'maint.pending': 'नए टेस्ट और फ़ीचर आ रहे हैं — जल्द मिलते हैं!',
+    'maint.cta': 'मुझे सूचित करें',
+    'maint.thanks': 'धन्यवाद! वापस आते ही ईमेल कर देंगे।',
+    'maint.badEmail': 'कृपया सही ईमेल पता दर्ज करें।',
+    'maint.contact': 'मदद चाहिए? सपोर्ट से बात करें:'
   }
 }
 

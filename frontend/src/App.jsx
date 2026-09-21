@@ -6,6 +6,7 @@ import { Splash } from './pages/auth/AuthPages.jsx'
 
 import Landing from './pages/Landing.jsx'
 import Schools from './pages/Schools.jsx'
+import MaintenancePage from './components/MaintenancePage.jsx'
 import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages.jsx'
 import Dashboard from './pages/student/Dashboard.jsx'
 import Practice from './pages/student/Practice.jsx'
@@ -48,6 +49,32 @@ function Protected({ children, admin = false }) {
   return children
 }
 
+// Maintenance mode: poll the public status endpoint every 30s. When the
+// admin flips the toggle, every non-admin surface swaps to the maintenance
+// landing page within one poll cycle — no redeploy needed. Admins keep the
+// full app so they can verify their work mid-maintenance.
+function MaintenanceGate({ children }) {
+  const { user, loading } = useAuth()
+  const [on, setOn] = useState(false)
+  const isAdmin = !!user && user.role === 'admin'
+
+  useEffect(() => {
+    let live = true
+    const check = () =>
+      fetch('/api/meta/status', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => { if (live) setOn(!!d.enabled) })
+        .catch(() => {})
+    check()
+    const iv = setInterval(check, 30000)
+    return () => { live = false; clearInterval(iv) }
+  }, [])
+
+  if (loading) return <Splash />
+  if (on && !isAdmin) return <MaintenancePage />
+  return children
+}
+
 function Root() {
   const { user, loading } = useAuth()
   if (loading) return <Splash />
@@ -58,7 +85,8 @@ function Root() {
 export default function App() {
   return (
     <ToastProvider>
-      <Routes>
+      <MaintenanceGate>
+        <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/schools" element={<Schools />} />
         <Route path="/login" element={<LoginPage />} />
@@ -102,6 +130,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </MaintenanceGate>
     </ToastProvider>
   )
 }

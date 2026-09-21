@@ -8,6 +8,7 @@ import { cacheStatus } from './utils/redis.js'
 import { b2Status } from './utils/b2.js'
 import { gravityConfigured } from './utils/monetize.js'
 import { rateLimit } from './middleware/rateLimit.js'
+import { verifyToken } from './middleware/auth.js'
 
 // Patch Express 4 to forward rejected promises from async handlers to the
 // error middleware (instead of crashing the process).
@@ -48,6 +49,23 @@ import instituteRoutes from './routes/institutes.js'
 import couponRoutes from './routes/coupons.js'
 import marketingRoutes, { chatRouter as marketingChatRoutes } from './routes/marketing.js'
 import { purgeExpiredData } from './utils/retention.js'
+
+// Maintenance mode: a single ai_configs row ('maintenance.enabled' = '1') gates
+// the whole student surface. Read fresh per request (no boot-time caching) so
+// the admin toggle takes effect instantly without a restart.
+async function maintenanceEnabled() {
+  try {
+    const row = await db.prepare("SELECT value FROM ai_configs WHERE key = 'maintenance.enabled'").get()
+    return row?.value === '1'
+  } catch { return false }
+}
+
+export async function getMaintenanceStatus() {
+  const enabled = await maintenanceEnabled()
+  if (!enabled) return { enabled: false }
+  const get = async (k) => (await db.prepare('SELECT value FROM ai_configs WHERE key = ?').get(k))?.value || ''
+  return { enabled: true, message: await get('maintenance.message'), eta: await get('maintenance.eta') }
+}
 
 const app = express()
 app.set('trust proxy', 1)
@@ -91,6 +109,29 @@ app.get('/api/health', async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message })
   }
+})
+
+// Public, unauthenticated status — the SPA polls this to flip to the
+// maintenance screen the moment the admin flips the toggle.
+app.get('/api/meta/status', async (req, res) => {
+  res.json(await getMaintenanceStatus())
+})
+
+// Maintenance gate: while enabled, every student-facing API 503s with a
+// machine-readable code the SPA can react to. /api/auth/me stays open so an
+// already-loaded session can still resolve the user role before routing.
+// Authenticated admins also pass (they're the ones running the update — the
+// admin exam-management pages consume student-shaped endpoints like /exams).
+// /api/health and /api/meta/status are mounted above this line, so they stay
+// reachable for Coolify uptime checks and the poller.
+app.use('/api', async (req, res, next) => {
+  if (!await maintenanceEnabled()) return next()
+  if (req.path.startsWith('/admin') || req.path === '/auth/me') return next()
+  const h = req.headers.authorization || ''
+  if (h.startsWith('Bearer ')) {
+    try { if (verifyToken(h.slice(7))?.role === 'admin') return next() } catch { /* not an admin token */ }
+  }
+  return res.status(503).json({ error: 'Maintenance in progress', code: 'MAINTENANCE_MODE' })
 })
 
 app.use('/api/auth', authRoutes)
