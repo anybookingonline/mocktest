@@ -32,6 +32,10 @@ async function request(path, { method = 'GET', body, headers = {}, silentAuth = 
     // console errors — only surface it if the caller wants it.
     if (res.status === 401) {
       clearToken()
+      // Tell AuthContext the session died so the UI flips to logged-out
+      // immediately (previously the UI kept rendering as logged-in while
+      // every request 401'd, which looked like random blank pages).
+      window.dispatchEvent(new CustomEvent('auth:expired'))
       if (silentAuth) return null
     }
     const err = new Error(data?.error || `Request failed (${res.status})`)

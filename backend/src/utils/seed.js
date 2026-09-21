@@ -44,76 +44,185 @@ const seed = async () => {
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`).run(k, v)
   }
 
-  // Seed exams with syllabus
+  // Seed exams with FULL syllabus (subject → chapter → topics).
+  // Idempotent: ON CONFLICT DO NOTHING throughout, safe to re-run anytime —
+  // existing installs gain the missing chapters/topics on next seed run.
   const exams = [
     {
       code: 'JEE-MAIN', name: 'JEE Main', duration_minutes: 180, total_questions: 90, marks_per_question: 4, negative_marks: 1,
       icon: 'gear', description: 'Joint Entrance Examination Main for engineering aspirants',
       subjects: [
-        { name: 'Physics', chapters: [{ name: 'Mechanics', topics: ['Laws of Motion', 'Work, Energy and Power', 'Rotational Motion'] }, { name: 'Electrodynamics', topics: ['Current Electricity', 'Electrostatics'] }] },
-        { name: 'Chemistry', chapters: [{ name: 'Physical Chemistry', topics: ['Mole Concept', 'Thermodynamics'] }, { name: 'Organic Chemistry', topics: ['GOC', 'Alkanes & Alkenes'] }] },
-        { name: 'Mathematics', chapters: [{ name: 'Algebra', topics: ['Quadratic Equations', 'Sequence and Series'] }, { name: 'Calculus', topics: ['Limits and Continuity', 'Differentiation'] }] }
+        { name: 'Physics', chapters: [
+          { name: 'Mechanics', topics: ['Laws of Motion', 'Work, Energy and Power', 'Rotational Motion', 'Kinematics', 'Gravitation', 'Units and Measurements'] },
+          { name: 'Electrodynamics', topics: ['Current Electricity', 'Electrostatics', 'Magnetic Effects of Current', 'Electromagnetic Induction', 'Alternating Current'] },
+          { name: 'Optics', topics: ['Ray Optics', 'Wave Optics'] },
+          { name: 'Modern Physics', topics: ['Dual Nature of Matter', 'Atoms and Nuclei', 'Semiconductor Electronics'] },
+          { name: 'Heat and Thermodynamics', topics: ['Thermal Properties', 'Thermodynamics', 'Kinetic Theory of Gases'] },
+          { name: 'Waves and Oscillations', topics: ['Simple Harmonic Motion', 'Sound Waves', 'Progressive Waves'] }
+        ] },
+        { name: 'Chemistry', chapters: [
+          { name: 'Physical Chemistry', topics: ['Mole Concept', 'Thermodynamics', 'Chemical Equilibrium', 'Ionic Equilibrium', 'Electrochemistry', 'Chemical Kinetics', 'Solutions', 'Atomic Structure'] },
+          { name: 'Organic Chemistry', topics: ['GOC', 'Alkanes & Alkenes', 'Alkyl Halides', 'Alcohols, Phenols and Ethers', 'Aldehydes and Ketones', 'Carboxylic Acids', 'Amines', 'Biomolecules'] },
+          { name: 'Inorganic Chemistry', topics: ['Periodic Table', 'Chemical Bonding', 'Coordination Compounds', 'p-Block Elements', 'd and f Block Elements', 'Metallurgy', 'Qualitative Analysis'] }
+        ] },
+        { name: 'Mathematics', chapters: [
+          { name: 'Algebra', topics: ['Quadratic Equations', 'Sequence and Series', 'Complex Numbers', 'Permutations and Combinations', 'Binomial Theorem', 'Matrices and Determinants', 'Probability', 'Sets, Relations and Functions', 'Mathematical Induction'] },
+          { name: 'Calculus', topics: ['Limits and Continuity', 'Differentiation', 'Applications of Derivatives', 'Integration', 'Applications of Integrals', 'Differential Equations'] },
+          { name: 'Coordinate Geometry', topics: ['Straight Lines', 'Circles', 'Parabola', 'Ellipse', 'Hyperbola', '3D Geometry', 'Vectors'] },
+          { name: 'Trigonometry', topics: ['Trigonometric Ratios and Identities', 'Inverse Trigonometry', 'Solution of Triangles'] },
+          { name: 'Statistics and Mathematical Reasoning', topics: ['Statistics Basics', 'Mathematical Reasoning'] }
+        ] }
       ]
     },
     {
-      code: 'NEET', name: 'NEET UG', duration_minutes: 200, total_questions: 200, marks_per_question: 4, negative_marks: 1,
-      icon: 'dna', description: 'National Eligibility cum Entrance Test for medical aspirants',
+      code: 'NEET', name: 'NEET', duration_minutes: 200, total_questions: 180, marks_per_question: 4, negative_marks: 1,
+      icon: 'stethoscope', description: 'National Eligibility cum Entrance Test for medical aspirants',
       subjects: [
-        { name: 'Physics', chapters: [{ name: 'Mechanics', topics: ['Kinematics', 'Laws of Motion'] }] },
-        { name: 'Chemistry', chapters: [{ name: 'Inorganic', topics: ['Periodic Table', 'Chemical Bonding'] }] },
-        { name: 'Biology', chapters: [{ name: 'Botany', topics: ['Plant Kingdom', 'Photosynthesis'] }, { name: 'Zoology', topics: ['Human Physiology', 'Genetics'] }] }
+        { name: 'Physics', chapters: [
+          { name: 'Mechanics', topics: ['Kinematics', 'Laws of Motion', 'Work, Energy and Power', 'Rotational Motion', 'Gravitation', 'Mechanical Properties of Solids and Fluids'] },
+          { name: 'Thermodynamics', topics: ['Thermodynamics', 'Kinetic Theory'] },
+          { name: 'Oscillations and Waves', topics: ['Oscillations', 'Waves', 'Sound'] },
+          { name: 'Electrodynamics', topics: ['Electrostatics', 'Current Electricity', 'Magnetic Effects of Current', 'Electromagnetic Induction', 'Alternating Current', 'Electromagnetic Waves'] },
+          { name: 'Optics', topics: ['Ray Optics', 'Wave Optics'] },
+          { name: 'Modern Physics', topics: ['Dual Nature of Matter', 'Atoms and Nuclei', 'Semiconductor Devices'] }
+        ] },
+        { name: 'Chemistry', chapters: [
+          { name: 'Physical Chemistry', topics: ['Mole Concept', 'Atomic Structure', 'Thermodynamics', 'Equilibrium', 'Electrochemistry', 'Chemical Kinetics', 'Solutions', 'Surface Chemistry'] },
+          { name: 'Inorganic', topics: ['Periodic Table', 'Chemical Bonding', 'Hydrogen and s-Block', 'p-Block Elements', 'd and f Block', 'Coordination Compounds', 'Environmental Chemistry'] },
+          { name: 'Organic', topics: ['GOC', 'Hydrocarbons', 'Haloalkanes and Haloarenes', 'Alcohols, Phenols and Ethers', 'Aldehydes, Ketones and Acids', 'Amines', 'Biomolecules', 'Polymers', 'Chemistry in Everyday Life'] }
+        ] },
+        { name: 'Biology', chapters: [
+          { name: 'Botany', topics: ['Plant Kingdom', 'Photosynthesis', 'Cell Cycle and Cell Division', 'Plant Physiology', 'Morphology of Flowering Plants', 'Anatomy of Flowering Plants', 'Ecosystem', 'Biodiversity and Conservation', 'Microbes in Human Welfare', 'Principles of Inheritance'] },
+          { name: 'Zoology', topics: ['Human Physiology', 'Genetics', 'Human Reproduction', 'Reproductive Health', 'Evolution', 'Human Health and Disease', 'Biotechnology', 'Structural Organisation in Animals', 'Neural Control and Coordination', 'Chemical Coordination'] }
+        ] }
       ]
     },
     {
       code: 'SSC-CGL', name: 'SSC CGL', duration_minutes: 60, total_questions: 100, marks_per_question: 2, negative_marks: 0.5,
-      icon: 'book', description: 'Staff Selection Commission Combined Graduate Level',
+      icon: 'gov', description: 'Staff Selection Commission — Combined Graduate Level Examination',
       subjects: [
-        { name: 'Quantitative Aptitude', chapters: [{ name: 'Arithmetic', topics: ['Percentage', 'Time and Work', 'Ratio and Proportion'] }] },
-        { name: 'Reasoning', chapters: [{ name: 'Verbal Reasoning', topics: ['Analogy', 'Coding Decoding'] }, { name: 'Non-Verbal', topics: ['Series', 'Figure Counting'] }] },
-        { name: 'English', chapters: [{ name: 'Grammar', topics: ['Spotting Errors', 'Sentence Improvement'] }] }
+        { name: 'Quantitative Aptitude', chapters: [
+          { name: 'Arithmetic', topics: ['Percentage', 'Time and Work', 'Ratio and Proportion', 'Profit and Loss', 'Simple and Compound Interest', 'Time, Speed and Distance', 'Average', 'Mixtures and Alligation', 'Ages'] },
+          { name: 'Number System', topics: ['Number System and LCM/HCF', 'Simplification', 'Surds and Indices', 'Number Series'] },
+          { name: 'Algebra and Geometry', topics: ['Algebraic Identities', 'Mensuration', 'Geometry', 'Trigonometry'] },
+          { name: 'Data Interpretation', topics: ['Bar Graphs', 'Pie Charts', 'Tables and Data Interpretation'] }
+        ] },
+        { name: 'Reasoning', chapters: [
+          { name: 'Verbal Reasoning', topics: ['Analogy', 'Coding Decoding', 'Syllogism', 'Blood Relations', 'Series Completion', 'Statement and Conclusion', 'Direction Sense', 'Ranking and Order'] },
+          { name: 'Non-Verbal', topics: ['Series', 'Figure Counting', 'Mirror Images', 'Paper Folding and Cutting', 'Embedded Figures'] }
+        ] },
+        { name: 'English', chapters: [
+          { name: 'Grammar', topics: ['Spotting Errors', 'Sentence Improvement', 'Fill in the Blanks', 'Active and Passive Voice', 'Direct and Indirect Speech'] },
+          { name: 'Vocabulary and Comprehension', topics: ['Synonyms and Antonyms', 'Idioms and Phrases', 'One Word Substitution', 'Spelling Correction', 'Cloze Test', 'Reading Comprehension'] }
+        ] },
+        { name: 'General Awareness', chapters: [
+          { name: 'Static GK', topics: ['Indian Polity', 'Indian History', 'Geography', 'Indian Economy', 'General Science', 'Books and Authors', 'Awards and Honours', 'Sports'] },
+          { name: 'Current Affairs', topics: ['National Current Affairs', 'International Current Affairs', 'Science and Technology News', 'Schemes and Policies'] }
+        ] }
       ]
     },
     {
-      code: 'UPSC-CSE', name: 'UPSC Civil Services', duration_minutes: 120, total_questions: 100, marks_per_question: 2, negative_marks: 0.66,
-      icon: 'landmark', description: 'Union Public Service Commission Civil Services Prelims',
+      code: 'BANK-PO', name: 'Bank PO / IBPS', duration_minutes: 60, total_questions: 100, marks_per_question: 1, negative_marks: 0.25,
+      icon: 'bank', description: 'IBPS/SBI Probationary Officer and Clerk examinations',
       subjects: [
-        { name: 'General Studies', chapters: [{ name: 'History', topics: ['Ancient India', 'Modern India'] }, { name: 'Polity', topics: ['Constitution', 'Governance'] }] },
-        { name: 'Economy', chapters: [{ name: 'Indian Economy', topics: ['Budgeting', 'Banking Sector'] }] },
-        { name: 'Environment', chapters: [{ name: 'Ecology', topics: ['Biodiversity', 'Climate Change'] }] }
+        { name: 'Quantitative Aptitude', chapters: [
+          { name: 'Arithmetic', topics: ['Simplification', 'Data Interpretation', 'Percentage', 'Profit and Loss', 'Time and Work', 'Time, Speed and Distance', 'Simple and Compound Interest', 'Ages', 'Boats and Streams', 'Probability'] },
+          { name: 'Number Series', topics: ['Wrong Number Series', 'Missing Number Series'] },
+          { name: 'Quadratic and Equations', topics: ['Quadratic Equations', 'Linear Equations', 'Quantity Comparison'] }
+        ] },
+        { name: 'Reasoning', chapters: [
+          { name: 'Puzzle', topics: ['Seating Arrangement', 'Syllogism', 'Floor Puzzles', 'Box Puzzles', 'Day and Month Puzzles'] },
+          { name: 'Logical Reasoning', topics: ['Coding Decoding', 'Blood Relations', 'Direction Sense', 'Inequality', 'Order and Ranking', 'Data Sufficiency', 'Statement and Assumption'] }
+        ] },
+        { name: 'English', chapters: [
+          { name: 'Comprehension', topics: ['Reading Comprehension', 'Cloze Test'] },
+          { name: 'Grammar and Vocabulary', topics: ['Spotting Errors', 'Sentence Improvement', 'Para Jumbles', 'Fillers', 'Word Swap', 'Connectors'] }
+        ] },
+        { name: 'General and Banking Awareness', chapters: [
+          { name: 'Banking Awareness', topics: ['RBI and Monetary Policy', 'Banking History and Structure', 'Financial Markets', 'Government Schemes'] },
+          { name: 'Current Affairs and Static GK', topics: ['Current Affairs', 'Static GK', 'Computer Aptitude'] }
+        ] }
       ]
     },
     {
-      code: 'BANK-PO', name: 'Banking PO', duration_minutes: 120, total_questions: 155, marks_per_question: 1, negative_marks: 0.25,
-      icon: 'bank', description: 'IBPS/SBI Probationary Officer',
+      code: 'UPSC', name: 'UPSC CSE', duration_minutes: 120, total_questions: 100, marks_per_question: 2, negative_marks: 0.66,
+      icon: 'landmark', description: 'UPSC Civil Services Examination — Prelims',
       subjects: [
-        { name: 'Quantitative Aptitude', chapters: [{ name: 'Arithmetic', topics: ['Simplification', 'Data Interpretation'] }] },
-        { name: 'Reasoning', chapters: [{ name: 'Puzzle', topics: ['Seating Arrangement', 'Syllogism'] }] },
-        { name: 'English', chapters: [{ name: 'Comprehension', topics: ['Reading Comprehension', 'Cloze Test'] }] }
+        { name: 'General Studies', chapters: [
+          { name: 'History', topics: ['Ancient India', 'Modern India', 'Medieval India', 'Art and Culture', 'Freedom Struggle'] },
+          { name: 'Polity', topics: ['Constitution', 'Governance', 'Parliament and State Legislatures', 'Judiciary', 'Panchayati Raj', 'Constitutional Bodies'] },
+          { name: 'Geography', topics: ['Physical Geography', 'Indian Geography', 'World Geography', 'Mapping'] },
+          { name: 'Economy', topics: ['Indian Economy', 'Budgeting', 'Banking Sector', 'Inflation and Monetary Policy', 'Agriculture', 'Industry and Infrastructure'] },
+          { name: 'Environment', topics: ['Biodiversity', 'Climate Change', 'Ecology', 'Pollution', 'Environmental Laws and Conventions'] },
+          { name: 'Science and Technology', topics: ['Space Technology', 'Biotechnology', 'Defence Technology', 'Nuclear Technology', 'IT and Computers'] },
+          { name: 'Current Affairs', topics: ['National Affairs', 'International Affairs', 'Reports and Indices', 'Schemes and Policies'] }
+        ] },
+        { name: 'CSAT', chapters: [
+          { name: 'Quantitative Aptitude', topics: ['Basic Numeracy', 'Data Interpretation', 'Percentage and Ratio', 'Time and Work'] },
+          { name: 'Reasoning', topics: ['Logical Reasoning', 'Analytical Reasoning', 'Decision Making', 'Interpersonal Skills'] },
+          { name: 'Comprehension', topics: ['Reading Comprehension', 'English Comprehension'] }
+        ] }
       ]
     },
     {
       code: 'CAT', name: 'CAT', duration_minutes: 120, total_questions: 66, marks_per_question: 3, negative_marks: 1,
-      icon: 'graduation-cap', description: 'Common Admission Test for MBA',
+      icon: 'chart', description: 'Common Admission Test for MBA programmes',
       subjects: [
-        { name: 'Quant', chapters: [{ name: 'Arithmetic', topics: ['Percentages', 'Profit and Loss', 'Mixtures'] }, { name: 'Algebra', topics: ['Inequalities', 'Functions'] }] },
-        { name: 'LRDI', chapters: [{ name: 'Logical Reasoning', topics: ['Arrangements', 'Cubes'] }, { name: 'Data Interpretation', topics: ['Tables and Charts', 'Caselets'] }] },
-        { name: 'VARC', chapters: [{ name: 'Verbal', topics: ['RC', 'Para Jumbles'] }] }
+        { name: 'Quant', chapters: [
+          { name: 'Arithmetic', topics: ['Percentages', 'Profit and Loss', 'Mixtures', 'Time and Work', 'Time, Speed and Distance', 'Ratios and Proportion', 'Averages', 'Interest'] },
+          { name: 'Algebra', topics: ['Inequalities', 'Functions', 'Quadratic Equations', 'Logarithms', 'Progressions'] },
+          { name: 'Geometry and Mensuration', topics: ['Triangles and Circles', 'Mensuration', 'Coordinate Geometry', 'Trigonometry'] },
+          { name: 'Number System', topics: ['Number Properties', 'Remainders and Divisibility', 'LCM and HCF'] },
+          { name: 'Modern Maths', topics: ['Permutation and Combination', 'Probability', 'Set Theory'] }
+        ] },
+        { name: 'LRDI', chapters: [
+          { name: 'Logical Reasoning', topics: ['Arrangements', 'Cubes', 'Games and Tournaments', 'Venn Diagrams', 'Syllogisms', 'Blood Relations'] },
+          { name: 'Data Interpretation', topics: ['Tables and Charts', 'Caselets', 'Bar and Line Graphs', 'Pie Charts', 'Data Sufficiency'] }
+        ] },
+        { name: 'VARC', chapters: [
+          { name: 'Verbal', topics: ['RC', 'Para Jumbles', 'Para Summary', 'Odd One Out', 'Sentence Completion'] }
+        ] }
       ]
     },
     {
       code: 'GATE', name: 'GATE', duration_minutes: 180, total_questions: 65, marks_per_question: 2, negative_marks: 0.66,
-      icon: 'wrench', description: 'Graduate Aptitude Test in Engineering',
+      icon: 'book', description: 'Graduate Aptitude Test in Engineering',
       subjects: [
-        { name: 'Core Subject', chapters: [{ name: 'General Aptitude', topics: ['Numerical Ability', 'Verbal Ability'] }] },
-        { name: 'Engineering Maths', chapters: [{ name: 'Maths', topics: ['Linear Algebra', 'Calculus', 'Probability'] }] }
+        { name: 'Engineering Maths', chapters: [
+          { name: 'Maths', topics: ['Linear Algebra', 'Calculus', 'Probability', 'Differential Equations', 'Complex Variables', 'Numerical Methods'] }
+        ] },
+        { name: 'General Aptitude', chapters: [
+          { name: 'Numerical Ability', topics: ['Numerical Computation', 'Data Interpretation', 'Estimation'] },
+          { name: 'Verbal Ability', topics: ['English Grammar', 'Verbal Analogies', 'Reading Comprehension'] }
+        ] },
+        { name: 'Core Subject', chapters: [
+          { name: 'Core Concepts', topics: ['Core Concepts'] }
+        ] }
       ]
     },
     {
-      code: 'CUET', name: 'CUET UG', duration_minutes: 60, total_questions: 50, marks_per_question: 5, negative_marks: 1,
-      icon: 'school', description: 'Common University Entrance Test',
+      code: 'CUET', name: 'CUET', duration_minutes: 60, total_questions: 50, marks_per_question: 5, negative_marks: 0,
+      icon: 'cap', description: 'Common University Entrance Test for undergraduate admissions',
       subjects: [
-        { name: 'General Test', chapters: [{ name: 'GK', topics: ['Current Affairs', 'Static GK'] }, { name: 'Maths', topics: ['Basic Maths', 'Data Interpretation'] }] },
-        { name: 'Language', chapters: [{ name: 'English', topics: ['Vocabulary', 'Comprehension'] }] }
+        { name: 'General Test', chapters: [
+          { name: 'GK', topics: ['Current Affairs', 'Static GK'] },
+          { name: 'Maths', topics: ['Basic Maths', 'Data Interpretation'] },
+          { name: 'Reasoning', topics: ['Logical Reasoning', 'Series', 'Analogy'] }
+        ] },
+        { name: 'Language', chapters: [
+          { name: 'English', topics: ['Vocabulary', 'Comprehension', 'Grammar', 'Verbal Ability'] }
+        ] },
+        { name: 'Domain Subjects', chapters: [
+          { name: 'Physics', topics: ['Mechanics', 'Optics', 'Electricity', 'Modern Physics'] },
+          { name: 'Chemistry', topics: ['Physical Chemistry', 'Organic Chemistry', 'Inorganic Chemistry'] },
+          { name: 'Biology', topics: ['Botany', 'Zoology', 'Cell Biology', 'Genetics'] },
+          { name: 'Mathematics', topics: ['Algebra', 'Calculus', 'Probability', 'Coordinate Geometry'] },
+          { name: 'Accountancy', topics: ['Accounting Basics', 'Partnership', 'Company Accounts'] },
+          { name: 'Business Studies', topics: ['Nature of Business', 'Management Principles', 'Marketing'] },
+          { name: 'Economics', topics: ['Microeconomics', 'Macroeconomics', 'Indian Economy'] },
+          { name: 'History', topics: ['Ancient India', 'Medieval India', 'Modern India'] },
+          { name: 'Political Science', topics: ['Constitution', 'Political Theory', 'International Relations'] }
+        ] }
       ]
     }
   ]

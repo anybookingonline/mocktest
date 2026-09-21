@@ -48,9 +48,23 @@ router.get('/', async (req, res) => {
   res.json({ total: totalRow.c, questions })
 })
 
+// GET /api/questions/bookmarks/list — MUST be registered BEFORE /:id or
+// Express matches "bookmarks" as :id and Postgres 500s casting it to INTEGER.
+router.get('/bookmarks/list', async (req, res) => {
+  const instId = await visibilityInstId(req.user.id)
+  const vis = visibilitySql(instId, 2)
+  const rows = await db.prepare(`SELECT q.* FROM questions q JOIN bookmarks b ON b.question_id = q.id
+    WHERE b.user_id = $1${vis.sql} ORDER BY b.created_at DESC`).all(req.user.id, ...vis.params)
+  const questions = []
+  for (const r of rows) questions.push(await qView(r, req.user.id))
+  res.json({ questions })
+})
+
 // GET /api/questions/:id
 router.get('/:id', async (req, res) => {
-  const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id)
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'Question not found' })
+  const q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(id)
   if (!q) return res.status(404).json({ error: 'Question not found' })
   // Institute-private question: only same-institute users may fetch it
   if (q.institute_id) {
@@ -109,15 +123,6 @@ router.post('/:id/toggle-bookmark', async (req, res) => {
   res.json({ bookmarked: !exists })
 })
 
-// GET /api/bookmarks
-router.get('/bookmarks/list', async (req, res) => {
-  const instId = await visibilityInstId(req.user.id)
-  const vis = visibilitySql(instId, 2)
-  const rows = await db.prepare(`SELECT q.* FROM questions q JOIN bookmarks b ON b.question_id = q.id
-    WHERE b.user_id = $1${vis.sql} ORDER BY b.created_at DESC`).all(req.user.id, ...vis.params)
-  const questions = []
-  for (const r of rows) questions.push(await qView(r, req.user.id))
-  res.json({ questions })
-})
+// (bookmarks/list route lives ABOVE /:id — see note there.)
 
 export default router

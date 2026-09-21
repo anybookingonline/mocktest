@@ -15,13 +15,28 @@ function publicUser(u) {
 
 router.post('/register', authLimiter(), async (req, res) => {
   const { name, email, password, target_exam, inviteCode } = req.body || {}
+  // Frontend bhi examId bhej sakta hai (dropdown se); naam se bhi resolve hota hai.
+  const signupExamId = Number(req.body?.examId) || null
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
   if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
   const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(String(email).toLowerCase())
   if (exists) return res.status(409).json({ error: 'Email already registered' })
+  // Resolve the signup exam selection to its id immediately: the Dashboard
+  // shows ONLY the target exam when exam_id is set, so a NULL here would
+  // drop every new user into the "choose your exam" state with all exams.
+  let examId = Number(signupExamId) || null
+  try {
+    if (!examId && target_exam) {
+      const byName = await db.prepare('SELECT id FROM exams WHERE LOWER(name) = LOWER(?) AND is_active = 1').get(String(target_exam))
+      if (!byName) {
+        const fuzzy = await db.prepare('SELECT id FROM exams WHERE is_active = 1 AND LOWER(?) LIKE LOWER(name || \'%\') ORDER BY LENGTH(name) LIMIT 1').get(String(target_exam))
+        examId = fuzzy?.id || null
+      } else examId = byName.id
+    }
+  } catch { /* exam resolution is best-effort — registration kabhi isse fail na ho */ }
   const hash = bcrypt.hashSync(String(password), 10)
-  const r = await db.prepare('INSERT INTO users (name, email, password_hash, role, target_exam) VALUES (?, ?, ?, ?, ?)')
-    .run(name, String(email).toLowerCase(), hash, 'student', target_exam || null)
+  const r = await db.prepare('INSERT INTO users (name, email, password_hash, role, target_exam, exam_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, String(email).toLowerCase(), hash, 'student', target_exam || null, examId)
   const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid)
   // White-label B2B: an institute invite code auto-links the new student to
   // that institute (and is rejected if invalid/exhausted).

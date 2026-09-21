@@ -91,6 +91,53 @@ router.post('/', async (req, res) => {
     const fetched = await db.prepare(`SELECT * FROM questions WHERE id IN (${marks})`).all(...ids)
     picked = fetched.filter((q) => !q.institute_id || Number(q.institute_id) === instId)
   }
+  // Bank shortfall top-up: free tier me naye/chhote topics ke liye bank me
+  // sirf 2-4 questions hote hain, aur student ne 20 maange the — UI 20 ka
+  // option dikhata hai to 4 par rok dena galat experience hai. Jo bhi kami
+  // ho (max 30), ek AI call se generate karke same syllabus mapping + 'ai'
+  // source ke saath bank me persist kar do; agli baar bank se hi serve hoga.
+  // Cost: ~₹0.06/question (DeepSeek), aiLimiter se abuse-guarded.
+  let aiCreated = 0
+  const shortfall = Math.min(Math.max(0, num - picked.length), 30)
+  if (shortfall > 0) {
+    try {
+      const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)
+      const subName = config.subjectIds?.length
+        ? (await db.prepare('SELECT name FROM subjects WHERE id = ?').get(Number(config.subjectIds[0])))?.name || null
+        : null
+      const chapName = config.chapterIds?.length
+        ? (await db.prepare('SELECT name FROM chapters WHERE id = ?').get(Number(config.chapterIds[0])) )?.name || null
+        : null
+      const topicName = config.topicIds?.length
+        ? (await db.prepare('SELECT name FROM topics WHERE id = ?').get(Number(config.topicIds[0])))?.name || null
+        : null
+      const gen = await generateQuestionsWithAI({
+        exam, count: Math.min(shortfall, 8),
+        subject: subName, chapter: chapName, topic: topicName,
+        difficulty: config.difficulty || null,
+        seed: `topup-${b.examId}-${Date.now()}`,
+        language: config.language || null
+      })
+      const list = Array.isArray(gen) ? gen : []
+      if (list.length) {
+        await persistQuestions(list, {
+          exam, source: 'ai', sourceMeta: { generatedBy: 'practice_topup' },
+          mapping: {
+            subjectId: config.subjectIds?.length ? Number(config.subjectIds[0]) : null,
+            chapterId: config.chapterIds?.length ? Number(config.chapterIds[0]) : null,
+            topicId: config.topicIds?.length ? Number(config.topicIds[0]) : null
+          }
+        })
+        aiCreated = list.length
+        // Re-pick: the fresh questions now satisfy the requested size.
+        const { where: w2, params: p2 } = buildQuestionPicker(config, instId)
+        const excludeIds = picked.map((p) => p.id)
+        const excl = excludeIds.length ? ` AND id NOT IN (${excludeIds.map(() => '?').join(',')})` : ''
+        picked = picked.concat(await db.prepare(`SELECT * FROM questions WHERE ${w2}${excl} ORDER BY RANDOM() LIMIT ${shortfall}`).all(...p2, ...excludeIds))
+      }
+    } catch { /* AI down — serve whatever the bank had (original behavior) */ }
+  }
+
   if (!picked.length) return res.status(400).json({ error: 'No questions found for the given configuration' })
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(b.examId)
   const duration = Number(config.duration) || exam?.duration_minutes || 60
@@ -100,7 +147,7 @@ router.post('/', async (req, res) => {
   const testId = r.lastInsertRowid
   const insert = await db.prepare('INSERT INTO test_questions (test_id, question_id, position) VALUES (?, ?, ?) ON CONFLICT(test_id, question_id) DO NOTHING')
   for (let i = 0; i < picked.length; i++) await insert.run(testId, picked[i].id, i)
-  res.status(201).json({ testId, questionCount: picked.length })
+  res.status(201).json({ testId, questionCount: picked.length, aiCreated })
 })
 
 // POST /api/tests/ai - generate full test with AI questions

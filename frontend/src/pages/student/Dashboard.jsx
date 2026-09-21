@@ -35,9 +35,25 @@ export default function Dashboard() {
   const acc = data ? Math.round((data.totalCorrect / Math.max(1, data.totalQuestions)) * 100) : 0
 
   // The exam the student picked at signup drives the whole dashboard.
+  // Match order: exam_id → exact normalized name → contains (shortest name
+  // wins, so "JEE" resolves to "JEE Main", never "JEE Main 2026").
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
   const targetExam = exams.find((e) => String(e.id) === String(user?.exam_id)) ||
-    exams.find((e) => e.name && user?.target_exam && e.name.toLowerCase().includes(String(user.target_exam).toLowerCase())) || null
+    (user?.target_exam ? exams.find((e) => norm(e.name) === norm(user.target_exam)) : null) ||
+    (user?.target_exam
+      ? exams.filter((e) => norm(e.name).includes(norm(user.target_exam)) || norm(user.target_exam).includes(norm(e.name)))
+        .sort((a, b) => a.name.length - b.name.length)[0] || null
+      : null)
   const otherExams = targetExam ? exams.filter((e) => e.id !== targetExam.id) : exams
+
+  // Purane accounts (exam_id NULL): jab signup wala exam naam se mil hi jaye,
+  // ek baar exam_id persist kar do — agli baar direct id se match hoga.
+  useEffect(() => {
+    if (!targetExam || !user) return
+    if (String(user.exam_id || '') === String(targetExam.id)) return
+    updateUser({ exam_id: targetExam.id })
+    api.put('/auth/me', { exam_id: targetExam.id }).catch(() => {})
+  }, [targetExam?.id, user?.id])
 
   const setExam = (e) => {
     updateUser({ exam_id: e.id, target_exam: e.name })

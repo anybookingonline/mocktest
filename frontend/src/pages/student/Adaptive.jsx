@@ -21,6 +21,8 @@ export default function Adaptive() {
   const [score, setScore] = useState(0)
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
+  // AI से अगला सवाल बनने में 10-30s लग सकते हैं — बिना loader के UI dead लगता है.
+  const [fetchingNext, setFetchingNext] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [streak, setStreak] = useState(0)
   const [startedAt, setStartedAt] = useState(null)
@@ -54,6 +56,7 @@ export default function Adaptive() {
   const start = async () => {
     if (!cfg.examId) { toast('Select an exam', 'err'); return }
     setBusy(true)
+    setFetchingNext(true)
     try {
       const d = await api.post('/ai/adaptive/start', { examId: Number(cfg.examId), subjectId: null, chapterId: cfg.chapterId ? Number(cfg.chapterId) : null, topicId: cfg.topicId ? Number(cfg.topicId) : null, numQuestions: Number(cfg.num), language: cfg.language || 'en' })
       // remember the student's exam choice for next time
@@ -68,12 +71,13 @@ export default function Adaptive() {
       const next = await api.post(`/ai/adaptive/${d.attemptId}/next`, {})
       setQuestion(next.question); setLevel(next.level); setProgress({ completed: next.completed, total: next.total })
       setAiGenNote(Boolean(next.aiGenerated)); setRelaxedNote(Boolean(next.relaxed))
-    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false); setFetchingNext(false) }
   }
 
   const submit = async (selected) => {
     if (!question || busy) return
     setBusy(true)
+    setFetchingNext(true)
     const spent = Math.round((Date.now() - (startedAt || Date.now())) / 1000) || 5
     setElapsed((e) => e + spent)
     try {
@@ -88,7 +92,7 @@ export default function Adaptive() {
       } else {
         setQuestion(null) // show solution; user clicks continue
       }
-    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false); setFetchingNext(false) }
   }
 
   const handleNext = (next) => {
@@ -107,11 +111,12 @@ export default function Adaptive() {
 
   const continueAfterWrong = async () => {
     setBusy(true)
+    setFetchingNext(true)
     try {
       const next = await api.post(`/ai/adaptive/${sessionId}/next`, { lastQuestionId: result.question.id, wasCorrect: false })
       setResult(null)
       handleNext(next)
-    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false); setFetchingNext(false) }
   }
 
   return (
@@ -176,7 +181,31 @@ export default function Adaptive() {
         </div>
       )}
 
-      {sessionId && question && !done && (
+      {sessionId && done && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 460, textAlign: 'center' }}>
+            <div style={{ fontSize: 54 }}>🏁</div>
+            <h2>Session complete!</h2>
+            <p className="muted small">Adaptive practice finished. Keep going — your weak topics are being tracked for analytics.</p>
+            <div className="row mt" style={{ justifyContent: 'center' }}>
+              <button className="btn btn-ghost" onClick={() => { setSessionId(null); setQuestion(null) }}>New session</button>
+              <button className="btn btn-primary" onClick={() => nav('/analytics')}>View analytics</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Next-question loader: AI बैकग्राउंड में सवाल बना रहा है तो यह overlay दिखे —
+          वरना UI पर कुछ समझ नहीं आता कि हो क्या रहा है. */}
+      {sessionId && !done && fetchingNext && (
+        <div className="card qcard" style={{ position: 'relative', minHeight: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+          <div className="spin" style={{ width: 34, height: 34 }} />
+          <b className="small">AI अगला सवाल तैयार कर रहा है…</b>
+          <span className="tiny muted" style={{ textAlign: 'center' }}>Fresh questions बनने में 10-30 सेकंड लगते हैं — पहली बार बने questions bank में save हो जाते हैं, अगली बार तुरंत मिलेंगे.</span>
+        </div>
+      )}
+
+      {sessionId && question && !done && !fetchingNext && (
         <div className="card qcard">
           <div className="spread mb">
             <Badge kind="purple">{question.qtype} · {question.difficulty}</Badge>
@@ -223,19 +252,6 @@ export default function Adaptive() {
         </div>
       )}
 
-      {done && (
-        <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 460, textAlign: 'center' }}>
-            <div style={{ fontSize: 54 }}>🏁</div>
-            <h2>Session complete!</h2>
-            <p className="muted small">Adaptive practice finished. Keep going — your weak topics are being tracked for analytics.</p>
-            <div className="row mt" style={{ justifyContent: 'center' }}>
-              <button className="btn btn-ghost" onClick={() => { setSessionId(null); setQuestion(null) }}>New session</button>
-              <button className="btn btn-primary" onClick={() => nav('/analytics')}>View analytics</button>
-            </div>
-          </div>
-        </div>
-      )}
     </StudentLayout>
   )
 }

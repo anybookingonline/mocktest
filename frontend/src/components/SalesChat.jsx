@@ -1,24 +1,62 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBranding } from '../context/BrandingContext.jsx'
+import { useLang } from '../context/LangContext.jsx'
 
 // ---------------------------------------------------------------------------
 // Public sales-support chat bubble for the marketing site (Landing + Schools).
 // Floats bottom-right; talks to /api/marketing/chat (rate-limited, no auth).
 // Mirrors the visitor's language, never invents prices (server injects facts).
+// UI copy (greeting, placeholder, header) follows the site language selector.
 // White-label: the header name follows the resolved branding (platform name
 // via Settings, or the institute's branding on their domain / ?sch= invite).
 // ---------------------------------------------------------------------------
 
-const GREETING = { role: 'assistant', content: 'Namaste! 👋 Main aapki kaise help kar sakta hoon — fees, free trial, coupon codes, ya school ke liye plan?', quick: ['Fees kitni hai?', 'Free trial?', 'School/coaching plan?'] }
+const GREETINGS = {
+  en: { role: 'assistant', content: 'Hi there! 👋 How can I help you — pricing, free trial, coupon codes, or a school plan?', quick: ['How much does it cost?', 'Free trial?', 'School/coaching plan?'] },
+  hinglish: { role: 'assistant', content: 'Namaste! 👋 Main aapki kaise help kar sakta hoon — fees, free trial, coupon codes, ya school ke liye plan?', quick: ['Fees kitni hai?', 'Free trial?', 'School/coaching plan?'] },
+  hi: { role: 'assistant', content: 'नमस्ते! 👋 मैं आपकी कैसे मदद कर सकता हूँ — फ़ीस, फ़्री ट्रायल, कूपन कोड, या स्कूल के लिए प्लान?', quick: ['फ़ीस कितनी है?', 'फ़्री ट्रायल?', 'स्कूल/कोचिंग प्लान?'] }
+}
+
+const UI = {
+  en: {
+    tagline: 'Sales & support · online',
+    placeholder: 'Type your question…',
+    escalate: '✅ School lead captured — our team will contact you within 24 hours.',
+    netErr: 'Looks like a network issue — please try again in a bit 😊',
+    genericErr: "Sorry, I didn't get that — could you ask in a bit more detail? 😊"
+  },
+  hinglish: {
+    tagline: 'Sales & support · online',
+    placeholder: 'Apna sawal likho…',
+    escalate: '✅ School lead captured — humari team aapko 24 ghante me contact karegi.',
+    netErr: 'Network issue lag raha hai — thodi der baad try karo 😊',
+    genericErr: 'Sorry, samajh nahi aaya — thoda aur detail me pucho? 😊'
+  },
+  hi: {
+    tagline: 'सेल्स और सहायता · ऑनलाइन',
+    placeholder: 'अपना सवाल लिखें…',
+    escalate: '✅ स्कूल की जानकारी मिल गई — हमारी टीम 24 घंटे में संपर्क करेगी।',
+    netErr: 'नेटवर्क की दिक्कत लग रही है — थोड़ी देर बाद कोशिश करें 😊',
+    genericErr: 'क्षमा करें, समझ नहीं आया — थोड़ा और विस्तार में पूछें? 😊'
+  }
+}
 
 export default function SalesChat() {
   const { platformName } = useBranding()
+  const { lang } = useLang()
+  const ui = UI[lang] || UI.hinglish
   const [open, setOpen] = useState(false)
-  const [msgs, setMsgs] = useState([GREETING])
+  const [msgs, setMsgs] = useState([GREETINGS[lang] || GREETINGS.hinglish])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [unread, setUnread] = useState(true)
   const endRef = useRef(null)
+
+  // Language switch while the chat is closed → reset the greeting so the
+  // opening message always matches the selected UI language.
+  useEffect(() => {
+    if (!open) setMsgs([GREETINGS[lang] || GREETINGS.hinglish])
+  }, [lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (open && endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' }) }, [msgs, open])
 
@@ -33,12 +71,12 @@ export default function SalesChat() {
       const r = await fetch('/api/marketing/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next.slice(1).map(({ role, content: c }) => ({ role, content: c })) })
+        body: JSON.stringify({ messages: next.slice(1).map(({ role, content: c }) => ({ role, content: c })), lang })
       })
       const d = await r.json()
-      setMsgs((m) => [...m, { role: 'assistant', content: d.reply || d.error || 'Thodi dikkat — dobara try karo 😊', quick: d.quick || [], escalate: Boolean(d.escalate) }])
+      setMsgs((m) => [...m, { role: 'assistant', content: d.reply || d.error || ui.genericErr, quick: d.quick || [], escalate: Boolean(d.escalate) }])
     } catch {
-      setMsgs((m) => [...m, { role: 'assistant', content: 'Network issue lag raha hai — thodi der baad try karo 😊', quick: [] }])
+      setMsgs((m) => [...m, { role: 'assistant', content: ui.netErr, quick: [] }])
     }
     setBusy(false)
   }
@@ -85,7 +123,7 @@ export default function SalesChat() {
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{platformName || 'Aisepadho'} Helper</div>
-              <div className="tiny muted" style={{ fontSize: 11 }}>Sales & support · online</div>
+              <div className="tiny muted" style={{ fontSize: 11 }}>{ui.tagline}</div>
             </div>
             <button onClick={() => setOpen(false)} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted, #94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>
           </div>
@@ -105,7 +143,7 @@ export default function SalesChat() {
               }}>{m.content}</div>
                 {m.escalate && (
                   <div className="tiny" style={{ marginTop: 6, padding: '6px 10px', borderRadius: 10, background: 'rgba(16,185,129,.12)', border: '1px solid rgba(16,185,129,.35)', fontSize: 11.5 }}>
-                    ✅ School lead captured — humari team aapko 24 ghante me contact karegi.
+                    {ui.escalate}
                   </div>
                 )}
                 {m.role === 'assistant' && (m.quick || []).length > 0 && i === msgs.length - 1 && (
@@ -130,7 +168,7 @@ export default function SalesChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') send(input) }}
-              placeholder="Apna sawal likho…"
+              placeholder={ui.placeholder}
               style={{ flex: 1, minWidth: 0, background: 'var(--bg, #0b0f1a)', border: '1px solid var(--border, #273049)', borderRadius: 10, padding: '9px 12px', color: 'var(--text, #e5e7eb)', fontSize: 13.5, outline: 'none' }}
             />
             <button onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="Send message" style={{

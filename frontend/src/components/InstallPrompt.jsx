@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useLang } from '../context/LangContext.jsx'
 
 // ---------------------------------------------------------------------------
 // PWA install experience.
@@ -9,6 +10,7 @@ import React, { useEffect, useState } from 'react'
 // - iOS Safari: no prompt API exists; show a one-time hint explaining the
 //   Share → "Add to Home Screen" flow.
 // - Dismissed state persists in localStorage (re-asks after 14 days).
+// - All copy follows the UI language selector (English/Hinglish/हिंदी).
 // ---------------------------------------------------------------------------
 const DISMISS_KEY = 'pwa-install-dismissed'
 const REASK_DAYS = 14
@@ -16,7 +18,39 @@ const isStandalone = () =>
   window.matchMedia?.('(display-mode: standalone)').matches ||
   window.navigator.standalone === true
 
+const COPY = {
+  en: {
+    androidTitle: 'Install the Aisepadho app',
+    androidSub: 'Offline revision, faster loading, home-screen shortcut.',
+    androidLater: 'Not now',
+    androidInstall: '📲 Install',
+    iosTitle: 'On iPhone/iPad? Add it to your Home Screen',
+    iosSub: <>In Safari, tap <b>Share ⬆️</b> → <b>"Add to Home Screen"</b> — it opens like an app.</>,
+    iosOk: 'Got it'
+  },
+  hinglish: {
+    androidTitle: 'Aisepadho app install karo',
+    androidSub: 'Offline revision, faster loading, home-screen shortcut.',
+    androidLater: 'Abhi nahi',
+    androidInstall: '📲 Install karo',
+    iosTitle: 'iPhone/iPad? Home screen par add karo',
+    iosSub: <>Safari me <b>Share ⬆️</b> → <b>"Add to Home Screen"</b> dabao — app ki tarah khulega.</>,
+    iosOk: 'Samajh gaya'
+  },
+  hi: {
+    androidTitle: 'Aisepadho ऐप इंस्टॉल करें',
+    androidSub: 'ऑफ़लाइन रिवीज़न, तेज़ लोडिंग, होम-स्क्रीन शॉर्टकट।',
+    androidLater: 'अभी नहीं',
+    androidInstall: '📲 इंस्टॉल करें',
+    iosTitle: 'iPhone/iPad? होम स्क्रीन पर जोड़ें',
+    iosSub: <>Safari में <b>Share ⬆️</b> → <b>"Add to Home Screen"</b> दबाएँ — ऐप की तरह खुलेगा।</>,
+    iosOk: 'समझ गए'
+  }
+}
+
 export default function InstallPrompt() {
+  const { lang } = useLang()
+  const c = COPY[lang] || COPY.hinglish
   const [deferred, setDeferred] = useState(null)
   const [showIosHint, setShowIosHint] = useState(false)
   const [installed, setInstalled] = useState(false)
@@ -75,14 +109,14 @@ export default function InstallPrompt() {
           <div className="row" style={{ gap: 12 }}>
             <img src="/icon-192.png" alt="Aisepadho" width={44} height={44} style={{ borderRadius: 10 }} />
             <div>
-              <b className="small">Aisepadho app install karo</b>
-              <div className="tiny muted">Offline revision, faster loading, home-screen shortcut.</div>
+              <b className="small">{c.androidTitle}</b>
+              <div className="tiny muted">{c.androidSub}</div>
             </div>
           </div>
         </div>
         <div className="row mt" style={{ justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={dismiss}>Abhi nahi</button>
-          <button className="btn btn-primary btn-sm" onClick={install}>📲 Install</button>
+          <button className="btn btn-ghost btn-sm" onClick={dismiss}>{c.androidLater}</button>
+          <button className="btn btn-primary btn-sm" onClick={install}>{c.androidInstall}</button>
         </div>
       </div>
     )
@@ -97,12 +131,12 @@ export default function InstallPrompt() {
         <div className="row" style={{ gap: 12 }}>
           <img src="/apple-touch-icon.png" alt="Aisepadho" width={44} height={44} style={{ borderRadius: 10 }} />
           <div>
-            <b className="small">iPhone/iPad? Home screen par add karo</b>
-            <div className="tiny muted">Safari me <b>Share ⬆️</b> → <b>"Add to Home Screen"</b> dabao — app ki tarah khulega.</div>
+            <b className="small">{c.iosTitle}</b>
+            <div className="tiny muted">{c.iosSub}</div>
           </div>
         </div>
         <div className="row mt" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost btn-sm" onClick={dismiss}>Samajh gaya</button>
+          <button className="btn btn-ghost btn-sm" onClick={dismiss}>{c.iosOk}</button>
         </div>
       </div>
     )

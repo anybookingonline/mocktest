@@ -178,6 +178,10 @@ export function RegisterPage() {
   const [password, setPassword] = useState('')
   const [target, setTarget] = useState('JEE Main')
   const [targetOptions, setTargetOptions] = useState(['JEE Main', 'NEET UG', 'UPSC CSE', 'SSC CGL', 'Banking PO', 'CAT', 'GATE', 'CUET UG'])
+  // Exam rows (id included) so signup can persist exam_id, not just the name.
+  // The Dashboard keys off exam_id — without it users land on "choose your
+  // exam" with ALL exams listed even though they picked one at signup.
+  const [examRows, setExamRows] = useState([])
   const [inviteCode, setInviteCode] = useState(schCode)
   const [busy, setBusy] = useState(false)
 
@@ -187,9 +191,11 @@ export function RegisterPage() {
     // Admin-created exams (school classes, coaching batches) appear automatically;
     // seed fallback keeps signup working even if the API is unreachable.
     api.get('/exams').then((d) => {
-      const names = (d.exams || []).filter((e) => e.is_active).map((e) => e.name)
+      const rows = (d.exams || []).filter((e) => e.is_active)
+      const names = rows.map((e) => e.name)
       if (names.length) {
         setTargetOptions(names)
+        setExamRows(rows)
         setTarget((cur) => (names.includes(cur) ? cur : names[0]))
       }
     }).catch(() => {})
@@ -203,7 +209,8 @@ export function RegisterPage() {
     e.preventDefault()
     setBusy(true)
     try {
-      await register(name, email, password, target, inviteCode.trim() || undefined)
+      const examRow = examRows.find((x) => x.name === target)
+      await register(name, email, password, target, inviteCode.trim() || undefined, examRow?.id)
       toast(t('auth.toast.created'), 'ok')
       nav('/')
     } catch (err) {

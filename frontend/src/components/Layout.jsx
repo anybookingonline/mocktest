@@ -5,6 +5,7 @@ import { BrandLogo } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import { api } from '../api/client.js'
 import Tour from './Tour.jsx'
+import ErrorBoundary from './ErrorBoundary.jsx'
 
 const STUDENT_NAV = [
   { to: '/', label: 'nav.dashboard', icon: '📊', group: 'Learn' },
@@ -145,7 +146,10 @@ export function AppShell({ nav, title, children, footer, onTitle, role = 'studen
             <button className="btn btn-ghost btn-sm" onClick={() => { logout(); navigate('/login') }}>{t('common.logout')}</button>
           </div>
         </div>
-        <div className="content">{children}</div>
+        {/* ErrorBoundary keeps the sidebar static: a page crash shows a
+            recoverable card on the right instead of unmounting the whole app
+            (which made menu clicks feel like full-page reloads to '/'). */}
+        <div className="content"><ErrorBoundary>{children}</ErrorBoundary></div>
       </div>
       <Tour role={role} autoOpen force={tourForce} onClose={() => { setTour(false); setTourForce(false) }} />
     </div>

@@ -23,6 +23,8 @@ Rules:
 - Questions must be exam-accurate, free of errors, and follow the syllabus.
 - Include fresh numeric values so each generation is unique (avoid memorized verbatim PYQs).
 - correctAnswer must match exactly one of the options (or be the numeric value for numerical/integer types).
+- MENTALLY VERIFY before finalizing: recompute every answer from scratch. If a computation gives a value not among the options, quietly change the question's numbers until it does — then write the explanation only for the FINAL version. Never present a question whose correct answer is missing from its options.
+- The explanation must read like a polished textbook solution that STARTS directly with the method. It must NEVER mention option-checking, discrepancies, misprints, alternate approaches, recalculations, or corrections of any kind. The student must never see that any revision happened.
 CRITICAL OUTPUT RULES:
 - Output ONLY the final JSON object. No text before or after it.
 - Do NOT show working, reasoning, self-talk, corrections, or drafts anywhere (not in the JSON, not outside it).
@@ -32,6 +34,48 @@ CRITICAL OUTPUT RULES:
 function examContext(exam) {
   if (!exam) return ''
   return `Exam: ${exam.name} (${exam.duration_minutes} min, ${exam.total_questions} Q, ${exam.marks_per_question} marks, ${exam.negative_marks} negative marks per wrong answer)\n`
+}
+
+// ---------------------------------------------------------------------------
+// Post-generation gate. AI models occasionally leak their internal
+// self-correction into the output (real production example: an explanation
+// that argued with itself about options not containing -1, then "adjusted"
+// the numbers). Such questions are worse than no question — they destroy
+// trust. Every generated question must pass these checks before it can be
+// shown to a student; failing ones are dropped (and the caller retries).
+// ---------------------------------------------------------------------------
+const SELF_TALK_RE = new RegExp([
+  're-?evaluat', 'discrepanc', 'misprint',
+  'not (in|an?) ?options?', 'not include', 'options? (do|does|is|are) not',
+  'options? (are|is) wrong', 'wait[,.!]',
+  'let me (check|recalculate|recompute|adjust|try)',
+  'i (will|must|need to) (change|adjust|modify|fix|choose|provide|use)',
+  'as an ai', 'self-?corr', 'however[,.] (the options|since)'
+].join('|'), 'i')
+
+export function validateGeneratedQuestions(list) {
+  const ok = []
+  for (const q of Array.isArray(list) ? list : []) {
+    if (!q || typeof q.question !== 'string' || q.question.trim().length < 8) continue
+    if (!q.explanation || typeof q.explanation !== 'string' || q.explanation.trim().length < 10) continue
+    const type = q.type || 'single'
+    const opts = Array.isArray(q.options) ? q.options.map((o) => String(o).trim()) : []
+    const ans = String(q.correctAnswer ?? '').trim()
+    if (type === 'single' || type === 'multiple') {
+      if (opts.length < 2) continue
+      // Answer must be a letter that exists ("B") OR the option text itself
+      // (with or without the "A. " prefix).
+      const letters = opts.map((o) => o.charAt(0).toUpperCase())
+      const letterOk = /^[A-H]$/.test(ans.toUpperCase()) && letters.includes(ans.toUpperCase())
+      const textOk = opts.some((o) => o === ans || o.replace(/^[A-H][.)]\s*/i, '').trim() === ans)
+      if (!letterOk && !textOk) continue
+    } else if (!/^-?\d+(\.\d+)?$/.test(ans.replace(/[,\s₹]/g, ''))) {
+      continue // numerical/integer answers must be clean numbers
+    }
+    if (SELF_TALK_RE.test(q.explanation) || SELF_TALK_RE.test(q.question)) continue
+    ok.push(q)
+  }
+  return ok
 }
 
 export async function generateQuestionsWithAI({ exam, count = 5, subject = null, chapter = null, topic = null, difficulty = null, seed = null, newsHint = '', language = null }) {
@@ -61,12 +105,13 @@ export async function generateQuestionsWithAI({ exam, count = 5, subject = null,
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const retryNote = attempt > 1
-        ? '\n\nIMPORTANT: Your previous response was rejected because it was not valid JSON. This time output ONLY the final JSON object. Absolutely no reasoning, self-corrections, or prose — and no double-quote characters inside any string value.'
+        ? '\n\nIMPORTANT: Your previous response was rejected — either it was not valid JSON, or a question\'s correct answer did not match its options, or the explanation contained visible self-correction/reasoning. Re-verify every computation silently, make sure each answer matches exactly one option, write polished explanations only, and output ONLY the final JSON object. No double-quote characters inside any string value.'
         : ''
       const res = await aiChat({ system, messages: [{ role: 'user', content: user + retryNote }], json: true, action: 'generate_questions', maxTokens: 16384, temperature: 0.3 })
       const list = res.data.questions || []
-      if (Array.isArray(list) && list.length) return list
-      lastErr = new Error('AI returned invalid question structure')
+      const valid = validateGeneratedQuestions(list)
+      if (valid.length) return valid
+      lastErr = new Error(`AI questions failed validation (${valid.length}/${list.length} passed)`)
     } catch (e) {
       lastErr = e
     }

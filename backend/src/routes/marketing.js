@@ -49,11 +49,17 @@ router.get('/stats', async (req, res) => {
 // Mounted below admin guard via a sub-router so it stays public but limited.
 const chatRouter = Router()
 chatRouter.post('/chat', rateLimit({ key: 'sales-chat', windowSec: 60, max: 8, message: 'Too many messages — please wait a moment.' }), async (req, res) => {
+  const lang = ['en', 'hinglish', 'hi'].includes(req.body?.lang) ? req.body.lang : ''
+  const fallbackReply = {
+    en: 'A technical glitch — please try again in a bit! 😊',
+    hi: 'थोड़ी तकनीकी दिक्कत है — थोड़ी देर बाद कोशिश करें! 😊',
+    hinglish: 'Thodi technical dikkat hai — thodi der baad try karo! 😊'
+  }[lang || 'hinglish']
   try {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-10) : []
-    res.json(await salesChat({ messages }))
+    res.json(await salesChat({ messages, lang }))
   } catch (e) {
-    res.status(502).json({ error: 'Chat unavailable right now.', reply: 'Thodi technical dikkat hai — thodi der baad try karo! 😊', quick: [] })
+    res.status(502).json({ error: 'Chat unavailable right now.', reply: fallbackReply, quick: [] })
   }
 })
 

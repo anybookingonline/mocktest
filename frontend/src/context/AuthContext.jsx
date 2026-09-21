@@ -15,6 +15,16 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false))
   }, [])
 
+  // The api client clears the token on any 401; mirror that here so the UI
+  // flips to logged-out the moment the session actually expires instead of
+  // rendering a half-broken authenticated shell (battles blank page, sidebar
+  // "resetting", endless 401s in console).
+  useEffect(() => {
+    const onExpired = () => setUser(null)
+    window.addEventListener('auth:expired', onExpired)
+    return () => window.removeEventListener('auth:expired', onExpired)
+  }, [])
+
   const login = async (email, password) => {
     const d = await api.post('/auth/login', { email, password })
     setToken(d.token)
@@ -22,8 +32,8 @@ export function AuthProvider({ children }) {
     return d.user
   }
 
-  const register = async (name, email, password, target_exam, inviteCode) => {
-    const d = await api.post('/auth/register', { name, email, password, target_exam, inviteCode })
+  const register = async (name, email, password, target_exam, inviteCode, examId) => {
+    const d = await api.post('/auth/register', { name, email, password, target_exam, inviteCode, examId })
     setToken(d.token)
     setUser(d.user)
     return d.user

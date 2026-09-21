@@ -323,7 +323,9 @@ export default function TestSession() {
               <div className="row">
                 <button className="btn btn-ghost btn-sm" onClick={markReview}>🔖 Review</button>
                 <button className="btn btn-ghost btn-sm" onClick={skipQuestion}>Skip</button>
-                <button className="btn btn-accent btn-sm" onClick={goNext} disabled={idx === questions.length - 1}>Next →</button>
+                {idx === questions.length - 1
+                  ? <button className="btn btn-danger btn-sm" onClick={() => setConfirmSubmit(true)}>✅ Submit Test</button>
+                  : <button className="btn btn-accent btn-sm" onClick={goNext}>Next →</button>}
               </div>
             </div>
           </div>
@@ -360,7 +362,9 @@ export default function TestSession() {
             <p className="muted small">Good pace. {fmtDuration(remaining)} left · {avgPerRemaining.toFixed(0)}s per remaining question.</p>
             <div className="row mt" style={{ justifyContent: 'center' }}>
               <button className="btn btn-ghost btn-sm" onClick={showAISolution}>{explainBusy ? 'Loading…' : 'Show solution'}</button>
-              <button className="btn btn-primary" onClick={resume}>{idx === questions.length - 1 ? 'Finish Test' : 'Next question →'}</button>
+              {idx === questions.length - 1
+                ? <button className="btn btn-danger" onClick={() => { setOverlay(null); setConfirmSubmit(true) }}>✅ Submit Test</button>
+                : <button className="btn btn-primary" onClick={resume}>Next question →</button>}
             </div>
             {showExpl && <div className="ai-bubble mt" style={{ textAlign: 'left' }}>{showExpl}</div>}
           </div>

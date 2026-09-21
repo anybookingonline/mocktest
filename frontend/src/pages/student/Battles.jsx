@@ -37,7 +37,7 @@ export default function Battles() {
     pollRef.current = setInterval(async () => {
       try {
         const s = await api.get(`/battles/${roomId}/state`)
-        setRoom(s)
+        setRoom(s.room ? s : null) // room vanished (expired/deleted) -> back to lobby
         if (s.room?.status === 'finished') {
           clearInterval(pollRef.current)
           pollRef.current = null
@@ -86,17 +86,21 @@ export default function Battles() {
     } catch (e) { /* duplicate answers are fine */ }
   }
 
-  const myId = room?.room?.p1?.id || room?.room?.p2?.id
-  const iAmP1 = room?.room?.p1 && room.room.p1.id === myId
-  const me = iAmP1 ? room.room.p1 : room.room.p2
-  const opp = iAmP1 ? room.room.p2 : room.room.p1
+  // Crash guard: room can be null between polls (401/expired room) — every
+  // read below must tolerate that. Previously `iAmP1 ? room.room.p1 : room.room.p2`
+  // dereferenced room.room even when room was null -> blank page.
+  const r = room?.room || null
+  const myId = r?.p1?.id || r?.p2?.id
+  const iAmP1 = r ? (r.p1 ? r.p1.id === myId : false) : true
+  const me = r ? (iAmP1 ? r.p1 : r.p2) : null
+  const opp = r ? (iAmP1 ? r.p2 : r.p1) : null
   const myScore = me?.score || 0
   const oppScore = opp?.score || 0
 
   return (
     <StudentLayout title="⚔️ Quiz Battles">
       {/* Active battle view */}
-      {room && room.room?.status !== 'finished' && (
+      {room?.room && room.room.status !== 'finished' && (
         <div className="card mb" style={{ borderColor: 'var(--accent)' }}>
           <div className="spread mb">
             <div className="row" style={{ gap: 14 }}>
@@ -162,7 +166,7 @@ export default function Battles() {
       )}
 
       {/* Lobby */}
-      {!room && (
+      {!room?.room && (
         <>
           <div className="card mb">
             <div className="spread">
