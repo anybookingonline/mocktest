@@ -19,8 +19,8 @@ const PROVIDERS = {
     base: 'https://generativelanguage.googleapis.com/v1beta',
     // NOTE: gemini-2.0-flash was retired by Google (API returns 404 and points
     // to gemini-3.6-flash). Update this default whenever Google retires a model.
-    defaultModel: 'gemini-3.6-flash',
-    defaultVisionModel: 'gemini-3.6-flash'
+    defaultModel: 'gemini-2.0-flash',
+    defaultVisionModel: 'gemini-3.6-flash-exp'
   },
   openrouter: {
     base: 'https://openrouter.ai/api/v1',
