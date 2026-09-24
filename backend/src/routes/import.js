@@ -139,8 +139,8 @@ async function runPdfProcessing(importId, examId, buffer, filePath, opts = {}) {
       await db.prepare(`UPDATE pdf_imports SET status='review', error=? WHERE id=?`)
         .run(`Review queue: ${staged} naye questions + ${dupes} duplicates (bank me already the). Approve karo publish ke liye.`, importId)
     } else {
-      const mapping = await mapSyllabus(examId, structured)
-      const created = await persistQuestions(structured, { exam, source: 'pdf', sourceMeta: { importId, year: extracted.year, shift: extracted.shift } }, { mapping })
+      await mapSyllabus(examId, structured) // mutates each question with its own subjectId/chapterId/topicId
+      const created = await persistQuestions(structured, { exam, source: 'pdf', sourceMeta: { importId, year: extracted.year, shift: extracted.shift } })
 
       await db.prepare(`UPDATE pdf_imports SET status='completed', questions_created=?, error=? WHERE id=?`)
         .run(created, created === 0 ? 'All questions were duplicates (already in bank)' : null, importId)
@@ -165,39 +165,45 @@ router.get('/:id', authRequired, platformOnly, async (req, res) => {
   res.json({ import: row })
 })
 
+// Loads the exam's syllabus tree and, for every question, resolves (creating
+// if needed) its subject/chapter/topic id — writing them directly onto the
+// question object as subjectId/chapterId/topicId. A real paper spans many
+// subjects, so this has to be per-question, not one shared id for the batch.
 async function mapSyllabus(examId, questions) {
   const subjects = await db.prepare('SELECT * FROM subjects WHERE exam_id = ?').all(examId)
   const chapters = await db.prepare('SELECT * FROM chapters WHERE exam_id = ?').all(examId)
   const topics = await db.prepare('SELECT * FROM topics WHERE exam_id = ?').all(examId)
-  const mapping = {}
-  const getOrCreate = async (table, parentCol, parentId, name, extra) => {
-    const found = table.find(x => x.name.toLowerCase() === String(name).toLowerCase() && (parentId == null || x[parentCol] === parentId))
+
+  // `list` is both the lookup cache and the thing we grow on insert — without
+  // that, two questions in the same paper needing the same new chapter would
+  // both try to INSERT it and the second would hit the table's UNIQUE(name)
+  // constraint.
+  const getOrCreate = async (list, tableName, parentCol, parentId, name, extra) => {
+    const found = list.find((x) => x.name.toLowerCase() === String(name).toLowerCase() && (parentId == null || x[parentCol] === parentId))
     if (found) return found.id
-    const r = await db.prepare(`INSERT INTO ${table} (${extra.cols}) VALUES (${extra.marks})`)
+    const r = await db.prepare(`INSERT INTO ${tableName} (${extra.cols}) VALUES (${extra.marks})`)
       .run(...extra.values(parentId, name))
-    return Number(r.lastInsertRowid)
+    const id = Number(r.lastInsertRowid)
+    list.push({ id, name, ...(parentCol ? { [parentCol]: parentId } : {}) })
+    return id
   }
+
   for (const q of questions) {
     if (!q.subject) continue
-    const subId = await getOrCreate('subjects', null, null, q.subject, {
+    q.subjectId = await getOrCreate(subjects, 'subjects', null, null, q.subject, {
       cols: 'exam_id, name, sort_order', marks: '?, ?, 0', values: () => [examId, q.subject]
     })
-    mapping.subjectId = subId
-    let chapId = null, topicId = null
     if (q.chapter) {
-      chapId = await getOrCreate('chapters', 'subject_id', subId, q.chapter, {
-        cols: 'subject_id, exam_id, name, sort_order', marks: '?, ?, ?, 0', values: (pid, name) => [subId, examId, name]
+      q.chapterId = await getOrCreate(chapters, 'chapters', 'subject_id', q.subjectId, q.chapter, {
+        cols: 'subject_id, exam_id, name, sort_order', marks: '?, ?, ?, 0', values: () => [q.subjectId, examId, q.chapter]
       })
-      mapping.chapterId = chapId
       if (q.topic) {
-        topicId = await getOrCreate('topics', 'chapter_id', chapId, q.topic, {
-          cols: 'chapter_id, exam_id, name, sort_order', marks: '?, ?, ?, 0', values: (pid, name) => [chapId, examId, name]
+        q.topicId = await getOrCreate(topics, 'topics', 'chapter_id', q.chapterId, q.topic, {
+          cols: 'chapter_id, exam_id, name, sort_order', marks: '?, ?, ?, 0', values: () => [q.chapterId, examId, q.topic]
         })
-        mapping.topicId = topicId
       }
     }
   }
-  return mapping
 }
 
 export default router

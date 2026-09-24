@@ -218,7 +218,11 @@ export async function structureExtractedQuestions(extracted, exam) {
 // ---------------------------------------------------------------------------
 
 export async function persistQuestions(list, { exam, source = 'ai', sourceMeta = null, mapping }) {
-  // mapping: { subjectName: subjectId, chapterName: chapterId, topicName: topicId }
+  // mapping: one shared { subjectId, chapterId, topicId } for the whole batch
+  // (e.g. doubt-practice: a few questions generated for one topic). A
+  // question's own subjectId/chapterId/topicId — set per-question by PDF
+  // import's mapSyllabus, since one paper spans many subjects — wins when
+  // present.
   const insert = await db.prepare(`INSERT INTO questions
     (exam_id, subject_id, chapter_id, topic_id, qtype, question_text, options_json, correct_answer,
      explanation, difficulty, marks, negative_marks, estimated_time, year, shift, tags_json,
@@ -239,9 +243,9 @@ export async function persistQuestions(list, { exam, source = 'ai', sourceMeta =
     const contentHash = hashContent(JSON.stringify({ question: q.question, options: opts, answer: q.correctAnswer }))
     const r = await insert.run({
       exam_id: exam.id,
-      subject_id: mapping?.subjectId || null,
-      chapter_id: mapping?.chapterId || null,
-      topic_id: mapping?.topicId || null,
+      subject_id: q.subjectId ?? mapping?.subjectId ?? null,
+      chapter_id: q.chapterId ?? mapping?.chapterId ?? null,
+      topic_id: q.topicId ?? mapping?.topicId ?? null,
       qtype: type,
       question_text: String(q.question).trim(),
       options_json: JSON.stringify(opts),
