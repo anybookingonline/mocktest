@@ -68,11 +68,40 @@ router.post('/pdf', authRequired, platformOnly, uploadLimiter(), upload.single('
 
   res.status(202).json({ importId, message: 'PDF accepted. Processing in background with Gemini Vision + DeepSeek.' })
 
-  // Background processing (fire & forget)
+  // Background processing (fire & forget) — queued (see processPdf) so a bulk
+  // upload of many PDFs can't pile up concurrent Gemini/DeepSeek calls and
+  // exhaust the host's memory/CPU.
   processPdf(importId, examId, buffer, req.file.path).catch(async e => {
     await db.prepare(`UPDATE pdf_imports SET status='failed', error=? WHERE id=?`).run(String(e.message || e).slice(0, 2000), importId)
   })
 })
+
+// Each PDF import runs Gemini Vision (whole-PDF base64 payload) + DeepSeek in
+// series and can take minutes; on a small host (e.g. a single Coolify
+// container) letting a bulk import fire many of these concurrently has taken
+// the whole app down (memory/CPU exhaustion -> every request, including
+// login, starts 503ing). Cap how many run at once; the rest wait in line.
+const MAX_CONCURRENT_PDF_JOBS = 2
+let activePdfJobs = 0
+const pdfJobQueue = []
+
+function runNextPdfJob() {
+  if (activePdfJobs >= MAX_CONCURRENT_PDF_JOBS) return
+  const job = pdfJobQueue.shift()
+  if (!job) return
+  activePdfJobs++
+  job().finally(() => {
+    activePdfJobs--
+    runNextPdfJob()
+  })
+}
+
+function enqueuePdfJob(fn) {
+  return new Promise((resolve, reject) => {
+    pdfJobQueue.push(() => fn().then(resolve, reject))
+    runNextPdfJob()
+  })
+}
 
 // Exported so the institute (sub-admin) PDF route can reuse the exact same
 // Gemini Vision + DeepSeek pipeline (dedup, syllabus mapping, persistence).
@@ -80,10 +109,14 @@ router.post('/pdf', authRequired, platformOnly, uploadLimiter(), upload.single('
 // instead of publishing to the shared bank — institute self-serve imports.
 //
 // Retry note: transient provider errors (Gemini 503 "high demand" etc.) are
-// retried inside the HTTP layer now (postJsonWithRetry). If processing still
-// fails, status='failed' + error text is stored and the admin can simply
-// re-upload — the dedup hash makes re-uploading safe.
+// retried inside the HTTP layer now (postJsonWithRetry, with a fallback vision
+// model). If processing still fails, status='failed' + error text is stored
+// and the admin can simply re-upload — the dedup hash makes re-uploading safe.
 export async function processPdf(importId, examId, buffer, filePath, opts = {}) {
+  return enqueuePdfJob(() => runPdfProcessing(importId, examId, buffer, filePath, opts))
+}
+
+async function runPdfProcessing(importId, examId, buffer, filePath, opts = {}) {
   const exam = await db.prepare('SELECT * FROM exams WHERE id = ?').get(examId)
   try {
     // Step 1: Gemini Vision extracts questions (handles scanned/image/multi-column/low-quality PDFs)

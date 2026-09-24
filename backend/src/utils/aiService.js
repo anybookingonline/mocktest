@@ -359,6 +359,23 @@ export async function aiChat({ system, messages, json = false, temperature = 0.7
   throw new Error('All AI providers failed: ' + errors.join(' | '))
 }
 
+async function callGeminiVisionModel(m, { apiKey, buffer, mimeType, prompt, attempts, baseDelayMs }) {
+  const b64 = buffer.toString('base64')
+  const url = `${PROVIDERS.gemini.base}/models/${m}:generateContent?key=${apiKey}`
+  const payload = {
+    contents: [{
+      role: 'user',
+      parts: [
+        { inline_data: { mime_type: mimeType || 'application/pdf', data: b64 } },
+        { text: prompt }
+      ]
+    }],
+    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+  }
+  const data = await postJsonWithRetry(url, {}, payload, 300000, { attempts, baseDelayMs, label: `gemini-vision:${m}` })
+  return data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
+}
+
 /**
  * Gemini vision: extract & understand any PDF (incl. scanned / image-based / multi-column).
  * Sends the whole PDF inline to the Gemini API.
@@ -379,26 +396,39 @@ export async function visionExtract({ buffer, mimeType, prompt, model = null }) 
       }
     } catch { /* non-fatal */ }
   }
-  const b64 = buffer.toString('base64')
-  const url = `${PROVIDERS.gemini.base}/models/${m}:generateContent?key=${apiKey}`
-  const payload = {
-    contents: [{
-      role: 'user',
-      parts: [
-        { inline_data: { mime_type: mimeType || 'application/pdf', data: b64 } },
-        { text: prompt }
-      ]
-    }],
-    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
-  }
+
+  // Vision is the ONLY step that can read PDFs, so it gets the most patient
+  // retry budget: 5 attempts (~100s of backoff) on the configured model, since
+  // Gemini 503 "high demand" spikes are usually temporary but can outlast a
+  // few seconds. If that model is still overloaded, fall back to the coded
+  // default vision model (a different capacity pool) before giving up —
+  // this is a background job (fire-and-forget), so there's no client waiting
+  // on a fast response.
+  const candidates = [m]
+  if (m !== PROVIDERS.gemini.defaultVisionModel) candidates.push(PROVIDERS.gemini.defaultVisionModel)
+
   const start = Date.now()
-  // Vision is the ONLY step that can read PDFs (no provider fallback exists
-  // for it), so give it the most patient retry budget: 4 attempts over ~30s.
-  const data = await postJsonWithRetry(url, {}, payload, 300000, { attempts: 4, baseDelayMs: 5000, label: 'gemini-vision' })
-  const out = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
-  logAi('vision', 'gemini', m, 'ok', Date.now() - start, null)
+  let out, usedModel, lastErr
+  for (const [i, candidate] of candidates.entries()) {
+    const isLast = i === candidates.length - 1
+    try {
+      out = await callGeminiVisionModel(candidate, {
+        apiKey, buffer, mimeType, prompt,
+        attempts: isLast ? 5 : 3, baseDelayMs: 10000
+      })
+      usedModel = candidate
+      break
+    } catch (e) {
+      lastErr = e
+      if (isLast) throw e
+      console.warn(`[gemini-vision] ${candidate} still failing after retries, falling back to ${candidates[i + 1]}: ${e.message.slice(0, 160)}`)
+    }
+  }
+  if (out === undefined) throw lastErr
+
+  logAi('vision', 'gemini', usedModel, 'ok', Date.now() - start, null)
   const parsed = extractJson(out)
-  if (vkey) await setCachedAi(vkey, 'vision', 'gemini', m, out, parsed)
+  if (vkey) await setCachedAi(vkey, 'vision', 'gemini', usedModel, out, parsed)
   return parsed
 }
 
