@@ -52,10 +52,14 @@ const POWERUPS = [
   { icon: '🔥', titleKey: 'pu.focus.t', textKey: 'pu.focus.d' }
 ]
 
+// Home FAQ — rendered visibly below and mirrored as FAQPage JSON-LD so the
+// structured data always matches what's on the page (Google's requirement).
+const HOME_FAQS = [1, 2, 3, 4, 5, 6]
+
 export default function Landing() {
   const nav = useNavigate()
   const brand = useBranding()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const tagline = brand.tagline || 'Padho. Test do. Aage badho.'
   const [stats, setStats] = useState(null)
   const [exams, setExams] = useState(FALLBACK_EXAMS)
@@ -73,6 +77,27 @@ export default function Landing() {
       }))
     }).catch(() => {})
   }, [])
+
+  // Google FAQPage rich-result structured data — regenerated per language so
+  // it always mirrors the visible FAQ section below (id lets us replace/remove
+  // it cleanly instead of stacking a copy per render).
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.type = 'application/ld+json'
+    script.id = 'faq-jsonld'
+    script.text = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: HOME_FAQS.map((n) => ({
+        '@type': 'Question',
+        name: t(`hq${n}.q`),
+        acceptedAnswer: { '@type': 'Answer', text: t(`hq${n}.a`) }
+      }))
+    })
+    document.getElementById('faq-jsonld')?.remove()
+    document.head.appendChild(script)
+    return () => script.remove()
+  }, [lang, t])
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -176,6 +201,19 @@ export default function Landing() {
           <p className="small muted mt">{t('b2b.sub')}</p>
           <div className="row mt" style={{ justifyContent: 'center' }}>
             <button className="btn btn-accent" onClick={() => nav('/schools')}>🏫 {t('cta.guruline')}</button>
+          </div>
+        </div>
+
+        {/* FAQ — visible copy mirrors the FAQPage JSON-LD injected above */}
+        <div className="card mb" style={{ textAlign: 'center' }}>
+          <b className="small">{t('faq.home.t')}</b>
+          <div className="grid grid-2 mt" style={{ textAlign: 'left' }}>
+            {HOME_FAQS.map((n) => (
+              <div key={n}>
+                <b className="small">{t(`hq${n}.q`)}</b>
+                <p className="tiny muted">{t(`hq${n}.a`)}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

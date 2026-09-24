@@ -1,0 +1,28 @@
+# Aisepadho
+
+> AI-powered mock test and practice platform for India's top competitive exams — JEE Main, NEET UG, UPSC CSE, SSC CGL, Banking PO, CAT, GATE and CUET UG. AI-generated question banks, previous year papers, adaptive practice, real exam simulation, 1v1 quiz battles, group study, spaced revision and daily AI current affairs.
+
+Aisepadho is a browser-based, installable (PWA) platform for students preparing for India's top competitive exams. It also runs as a white-label test platform for schools and coaching institutes — Guru Studio gives their teachers AI Teach Kits, a game-based Classroom Live Quiz and Soft Skills training (group discussion, speech, personality reports).
+
+## Product
+
+- [Home](https://aisepadho.com/): overview, supported exams, features and FAQ
+- [For Schools & Coaching Institutes](https://aisepadho.com/schools): white-label platform, Guru Studio, pricing, free pilot program
+
+## Supported exams
+
+- JEE Main — Engineering
+- NEET UG — Medical
+- UPSC CSE — Civil Services
+- SSC CGL — Staff Selection
+- Banking PO — IBPS / SBI
+- CAT — MBA Entrance
+- GATE — Engineering PG
+- CUET UG — University Entrance
+
+## Optional
+
+- [Sitemap](https://aisepadho.com/sitemap.xml)
+- [AI catalog manifest](https://aisepadho.com/ai-catalog.json)
+
+Student/admin app pages (dashboard, tests, practice, analytics, etc.) require login and are intentionally left out of this file — they're not useful reference material for an LLM.

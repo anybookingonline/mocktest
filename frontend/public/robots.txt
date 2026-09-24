@@ -1,0 +1,35 @@
+# Aisepadho — https://aisepadho.com
+# Open to search engines and AI agents/crawlers (Agentic Browsing).
+
+User-agent: *
+Allow: /
+
+# Known AI assistant / agent crawlers — explicitly welcomed
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://aisepadho.com/sitemap.xml

@@ -1,0 +1,42 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Aisepadho",
+    "documentationUrl": "https://aisepadho.com/llms.txt"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:aisepadho.com:website:home",
+      "displayName": "Aisepadho — AI Mock Test & Practice Platform",
+      "type": "text/html",
+      "url": "https://aisepadho.com/",
+      "description": "AI-powered mock test and practice platform for JEE Main, NEET UG, UPSC CSE, SSC CGL, Banking PO, CAT, GATE and CUET UG — AI question bank, previous year papers, adaptive practice, real exam simulation, quiz battles and daily AI current affairs.",
+      "tags": ["education", "exam-prep", "mock-test", "india", "jee", "neet", "upsc", "ssc"],
+      "representativeQueries": [
+        "AI mock test platform for JEE and NEET",
+        "practice previous year questions for UPSC SSC banking exams",
+        "adaptive AI practice app for competitive exams in India",
+        "is Aisepadho free to use"
+      ]
+    },
+    {
+      "identifier": "urn:air:aisepadho.com:website:schools",
+      "displayName": "Aisepadho for Schools & Coaching Institutes",
+      "type": "text/html",
+      "url": "https://aisepadho.com/schools",
+      "description": "White-label AI test platform for schools and coaching institutes, with Guru Studio (AI Teach Kits, Classroom Live Quiz, Soft Skills) for teachers and parent-ready progress reports.",
+      "tags": ["education", "b2b", "white-label", "schools", "coaching"],
+      "representativeQueries": [
+        "white-label AI test platform for coaching institutes",
+        "AI teaching tools for schools in India"
+      ]
+    },
+    {
+      "identifier": "urn:air:aisepadho.com:docs:llms",
+      "displayName": "Aisepadho llms.txt",
+      "type": "text/markdown",
+      "url": "https://aisepadho.com/llms.txt",
+      "description": "Machine-readable summary of the Aisepadho product, supported exams and public pages, for LLMs and AI agents."
+    }
+  ]
+}
