@@ -179,21 +179,38 @@ export async function extractPdfQuestions({ buffer, mimeType }) {
 }
 
 const STRUCTURE_SYSTEM = `You convert extracted question paper data into the platform's canonical question schema. Keep every question verbatim; never alter meaning.`
-const STRUCTURE_PROMPT = (extracted, exam) => `The following is raw OCR/vision extraction of an exam paper for ${exam ? exam.name : 'an exam'}. Normalize it into our standard schema.
+const STRUCTURE_PROMPT = (batch, meta, exam) => `The following is raw OCR/vision extraction of ${batch.length} question(s) from an exam paper for ${exam ? exam.name : 'an exam'}${meta.year ? ` (${meta.year}${meta.shift ? ', ' + meta.shift : ''})` : ''}. Normalize it into our standard schema.
 Canonical question fields: examId, subject, chapter (infer), topic (infer), type, question, options, correctAnswer, explanation (infer a detailed one if missing), difficulty, marks, negativeMarks, estimatedTime, tags, year, shift, source:"pdf".
-Output ONLY JSON: { "questions": [ { "examId": ${exam?.id || null}, "subject": "...", "chapter": "...", "topic": "...", "type": "...", "question": "...", "options": [...], "correctAnswer": "...", "explanation": "...", "difficulty": "...", "marks": number, "negativeMarks": number, "estimatedTime": number, "tags": [...], "year": number|null, "shift": "..." } ] }
+Output ONLY JSON: { "questions": [ { "examId": ${exam?.id || null}, "subject": "...", "chapter": "...", "topic": "...", "type": "...", "question": "...", "options": [...], "correctAnswer": "...", "explanation": "...", "difficulty": "...", "marks": number, "negativeMarks": number, "estimatedTime": number, "tags": [...], "year": ${meta.year ?? 'null'}, "shift": ${meta.shift ? `"${meta.shift}"` : 'null'} } ] }
 
 RAW DATA:
-${JSON.stringify(extracted)}`
+${JSON.stringify(batch)}`
+
+// A full paper (e.g. 75 pages / 200+ questions) asked for in one AI call used
+// to blow past maxTokens and come back as truncated, unparseable JSON — the
+// bigger the PDF, the more likely every provider failed with "invalid JSON".
+// Batching bounds each request/response to a fixed size regardless of paper
+// length, so a 300-question paper is just as reliable as a 10-question one.
+const STRUCTURE_BATCH_SIZE = 15
 
 export async function structureExtractedQuestions(extracted, exam) {
-  const res = await aiChat({
-    system: STRUCTURE_SYSTEM,
-    messages: [{ role: 'user', content: STRUCTURE_PROMPT(extracted, exam) }],
-    json: true,
-    action: 'structure_pdf'
-  })
-  return res.data.questions || []
+  const sections = extracted.sections || []
+  const flat = sections.flatMap((s) => (s.questions || []).map((q) => ({ ...q, subject: q.subject || s.subject })))
+  if (!flat.length) return []
+
+  const meta = { year: extracted.year ?? null, shift: extracted.shift ?? null }
+  const out = []
+  for (let i = 0; i < flat.length; i += STRUCTURE_BATCH_SIZE) {
+    const batch = flat.slice(i, i + STRUCTURE_BATCH_SIZE)
+    const res = await aiChat({
+      system: STRUCTURE_SYSTEM,
+      messages: [{ role: 'user', content: STRUCTURE_PROMPT(batch, meta, exam) }],
+      json: true,
+      action: 'structure_pdf'
+    })
+    out.push(...(res.data.questions || []))
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------

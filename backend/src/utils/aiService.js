@@ -30,9 +30,11 @@ const PROVIDERS = {
   },
   openrouter: {
     base: 'https://openrouter.ai/api/v1',
-    // :free slugs rotate — when this dies (404), pick the current free model
-    // from https://openrouter.ai/models?max_price=0 and update Admin > AI Config.
-    defaultModel: 'inclusionai/ling-3.0-flash-vl:free'
+    // :free slugs rotate — when this dies (404), the error message itself
+    // names the replacement slug ("use this slug instead: ..."); or pick a
+    // current free model from https://openrouter.ai/models?max_price=0 and
+    // update Admin > AI Config.
+    defaultModel: 'deepseek/deepseek-chat-v3-0324'
   }
 }
 
@@ -279,7 +281,11 @@ async function callGemini({ model, system, messages, parts = [], json = false, t
   }
   if (json) payload.generationConfig.responseMimeType = 'application/json'
 
-  const data = await postJsonWithRetry(url, {}, payload, { label: 'gemini' })
+  // Bug fix: timeoutMs is a positional arg before the options object — passing
+  // the options object in its place made setTimeout() see a NaN delay, which
+  // fires almost instantly, so this fallback used to always fail with
+  // "This operation was aborted" the moment it was actually needed.
+  const data = await postJsonWithRetry(url, {}, payload, 120000, { label: 'gemini' })
   return data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
 }
 

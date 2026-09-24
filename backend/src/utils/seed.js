@@ -28,7 +28,7 @@ const seed = async () => {
     'deepseek.model': 'deepseek-chat',
     'gemini.model': 'gemini-3.6-flash',
     'gemini.visionModel': 'gemini-3.6-flash',
-    'openrouter.model': 'inclusionai/ling-3.0-flash-vl:free',
+    'openrouter.model': 'deepseek/deepseek-chat-v3-0324',
     'platform.name': 'ExamAI',
     'platform.tagline': 'AI-Powered Mock Test & Practice Platform',
     'monetization.freeDoubtsPerDay': '5',
@@ -43,6 +43,15 @@ const seed = async () => {
   for (const [k, v] of Object.entries(defaults)) {
     await db.prepare(`INSERT INTO ai_configs (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`).run(k, v)
   }
+
+  // OpenRouter retired this free slug (now 404s: "use this slug instead:
+  // deepseek/deepseek-chat-v3-0324"). Existing installs already have the old
+  // value from a previous seed run, which ON CONFLICT DO NOTHING won't touch
+  // — so migrate it explicitly, but only if it's still exactly the dead
+  // default (never touch a value the admin deliberately changed).
+  await db.prepare(
+    `UPDATE ai_configs SET value = 'deepseek/deepseek-chat-v3-0324' WHERE key = 'openrouter.model' AND value = 'inclusionai/ling-3.0-flash-vl:free'`
+  ).run()
 
   // Seed exams with FULL syllabus (subject → chapter → topics).
   // Idempotent: ON CONFLICT DO NOTHING throughout, safe to re-run anytime —
