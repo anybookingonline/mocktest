@@ -8,8 +8,9 @@ export default function AdminImport() {
   const fileRef = useRef(null)
   const [exams, setExams] = useState([])
   const [examId, setExamId] = useState('')
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState(null) // { done, total } while a batch is uploading
   const [imports, setImports] = useState([])
   const [provider, setProvider] = useState(null)
   const pollRef = useRef(null)
@@ -28,19 +29,33 @@ export default function AdminImport() {
     return () => clearInterval(pollRef.current)
   }, [imports])
 
+  // Uploads run one request at a time (not Promise.all) — each POST carries
+  // up to 30MB, and firing several at once from the browser was part of what
+  // overloaded the small Coolify host during bulk imports. The server itself
+  // also caps background extraction at 2 concurrent PDFs regardless, so
+  // batching client-side just avoids piling up big in-flight request bodies.
   const upload = async () => {
-    if (!file) { toast('Choose a PDF file', 'err'); return }
+    if (!files.length) { toast('Choose one or more PDF files', 'err'); return }
     if (!examId) { toast('Select the exam this paper belongs to', 'err'); return }
     if (!provider?.geminiConfigured) { toast('Gemini Vision is required for PDF extraction. Configure the Gemini API key in AI Config.', 'err'); return }
     setBusy(true)
-    try {
-      const d = await api.upload('/import/pdf', file, { examId }, { silentAuth: true })
-      if (!d) { toast('Session expire ho gaya — login karke dobara try karo', 'err'); return }
-      if (d.reused) toast(d.message, 'ok')
-      else toast(d.message, 'ok')
-      setFile(null); if (fileRef.current) fileRef.current.value = ''
+    let ok = 0, reused = 0, failed = 0
+    for (const [i, f] of files.entries()) {
+      setProgress({ done: i, total: files.length })
+      try {
+        const d = await api.upload('/import/pdf', f, { examId }, { silentAuth: true })
+        if (!d) { toast('Session expire ho gaya — login karke dobara try karo', 'err'); break }
+        if (d.reused) reused++; else ok++
+      } catch (e) {
+        failed++
+        toast(`${f.name}: ${e.message}`, 'err')
+      }
       refresh()
-    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+    }
+    setProgress(null)
+    toast(`${ok} queued${reused ? `, ${reused} reused` : ''}${failed ? `, ${failed} failed` : ''}`, failed ? 'err' : 'ok')
+    setFiles([]); if (fileRef.current) fileRef.current.value = ''
+    setBusy(false)
   }
 
   return (
@@ -57,15 +72,22 @@ export default function AdminImport() {
             </select>
           </label>
 
-          <label className="field"><span>Paper file (max 30 MB)</span>
-            <input ref={fileRef} type="file" accept="application/pdf" className="input" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <label className="field"><span>Paper file(s) (max 30 MB each)</span>
+            <input ref={fileRef} type="file" accept="application/pdf" multiple className="input" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
           </label>
 
-          {file && <p className="tiny mb">📎 {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</p>}
+          {files.length > 0 && (
+            <p className="tiny mb">
+              📎 {files.length} file{files.length > 1 ? 's' : ''} selected · {(files.reduce((a, f) => a + f.size, 0) / 1024 / 1024).toFixed(2)} MB total
+            </p>
+          )}
 
           <button className="btn btn-accent" onClick={upload} disabled={busy}>
-            {busy ? 'Uploading…' : '🚀 Extract & import with Gemini Vision'}
+            {busy
+              ? (progress ? `Uploading ${progress.done + 1}/${progress.total}…` : 'Uploading…')
+              : `🚀 Extract & import${files.length > 1 ? ` (${files.length} files)` : ''} with Gemini Vision`}
           </button>
+          {files.length > 1 && <p className="tiny muted mt">Uploaded one at a time; the server processes up to 2 at once in the background — the rest queue automatically.</p>}
 
           <hr className="divider" />
           <div className="row">
