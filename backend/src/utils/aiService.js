@@ -17,10 +17,16 @@ const PROVIDERS = {
   },
   gemini: {
     base: 'https://generativelanguage.googleapis.com/v1beta',
-    // NOTE: gemini-2.0-flash was retired by Google (API returns 404 and points
-    // to gemini-3.6-flash). Update this default whenever Google retires a model.
-    defaultModel: 'gemini-2.0-flash',
-    defaultVisionModel: 'gemini-2.0-flash-exp'
+    // NOTE: the whole Gemini 2.0 line (incl. gemini-2.0-flash-exp) was shut
+    // down by Google — calling it now returns 404. Per Google's current model
+    // guide (ai.google.dev/gemini-api/docs/models), 3.5 Flash-Lite / 3.8 Flash
+    // are the recommended defaults for new projects. Check that guide before
+    // changing these — Google retires models on a rolling basis.
+    defaultModel: 'gemini-3.5-flash-lite',
+    // One generation behind the usual admin-configured vision model (3.8
+    // Flash) on purpose: a different capacity pool to fall back to in
+    // visionExtract() when the primary model is overloaded (503).
+    defaultVisionModel: 'gemini-3.6-flash'
   },
   openrouter: {
     base: 'https://openrouter.ai/api/v1',
