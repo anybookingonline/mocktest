@@ -6,12 +6,25 @@ import { Badge, useToast } from '../../components/ui.jsx'
 export default function AdminPayments() {
   const toast = useToast()
   const [data, setData] = useState(null)
+  const [refunds, setRefunds] = useState(null)
   const [email, setEmail] = useState('')
   const [days, setDays] = useState(365)
 
-  const reload = () => api.get('/payments/admin/status').then(setData).catch(() => {})
+  const reload = () => {
+    api.get('/payments/admin/status').then(setData).catch(() => {})
+    api.get('/payments/admin/refunds').then((d) => setRefunds(d.refunds)).catch(() => {})
+  }
 
   useEffect(() => { reload() }, [])
+
+  const actionRefund = async (id, action) => {
+    const note = action === 'reject' ? (window.prompt('Reason for rejecting (shown to admin only):') || '') : ''
+    try {
+      await api.post(`/payments/admin/refunds/${id}`, { action, note })
+      toast(`Refund ${action === 'mark-refunded' ? 'marked refunded' : action + 'd'}`, 'ok')
+      reload()
+    } catch (e) { toast(e.message, 'err') }
+  }
 
   const activate = async () => {
     if (!email) return toast('Enter a user email', 'err')
@@ -44,6 +57,39 @@ export default function AdminPayments() {
         </div>
         <p className="tiny muted">Extends retention for the given user by the number of days (default 365).</p>
       </div>
+
+      {refunds?.length > 0 && (
+        <div className="card mb">
+          <b className="small mb" style={{ display: 'block' }}>Refund requests</b>
+          <p className="tiny muted mb">Approving/rejecting here only updates our records — actually move the money back via the gateway's own dashboard (or bank transfer for QR/UPI), then click "Mark refunded" for bookkeeping.</p>
+          <table className="table">
+            <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Reason</th><th>Requested</th><th>Status</th><th /></tr></thead>
+            <tbody>
+              {refunds.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.email}</td>
+                  <td>{r.plan}</td>
+                  <td>{r.currency} {r.amount}</td>
+                  <td className="small muted">{r.refund_reason || '—'}</td>
+                  <td className="small muted">{fmt(r.refund_requested_at)}</td>
+                  <td><Badge kind={r.refund_status === 'refunded' ? 'green' : r.refund_status === 'rejected' ? 'red' : 'amber'}>{r.refund_status}</Badge></td>
+                  <td>
+                    {r.refund_status === 'requested' && (
+                      <div className="row">
+                        <button className="btn btn-primary btn-sm" onClick={() => actionRefund(r.id, 'approve')}>Approve</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => actionRefund(r.id, 'reject')}>Reject</button>
+                      </div>
+                    )}
+                    {r.refund_status === 'approved' && (
+                      <button className="btn btn-primary btn-sm" onClick={() => actionRefund(r.id, 'mark-refunded')}>Mark refunded</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="card mb">
         <b className="small mb" style={{ display: 'block' }}>Recent payments {data?.pendingCount > 0 && <span className="tiny muted">· {data.pendingCount} pending</span>}</b>

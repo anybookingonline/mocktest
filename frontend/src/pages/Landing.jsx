@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 import { examIcon } from '../components/ui.jsx'
@@ -217,6 +217,14 @@ export default function Landing() {
           </div>
         </div>
       </div>
+
+      <footer className="tiny muted" style={{ textAlign: 'center', padding: '10px 16px 40px' }}>
+        {brand.platformName || 'Aisepadho'} — {tagline}
+        <div className="mt">
+          <Link to="/privacy-policy">Privacy Policy</Link> · <Link to="/terms-of-use">Terms of Use</Link> · <Link to="/refund-policy">Refund Policy</Link> · <Link to="/cookie-policy">Cookie Policy</Link> ·{' '}
+          <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new Event('cookie-consent:manage')) }}>Manage cookie preferences</a>
+        </div>
+      </footer>
       {/* Public sales-support widget — AI-led lead capture + FAQ */}
       <SalesChat />
     </div>

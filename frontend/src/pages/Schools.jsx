@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { BrandLogo, useBranding } from '../context/BrandingContext.jsx'
 import { useLang, LangSwitcher } from '../context/LangContext.jsx'
 import SalesChat from '../components/SalesChat.jsx'
@@ -141,6 +141,9 @@ export default function Schools() {
 
       <footer className="tiny muted" style={{ textAlign: 'center', padding: '30px 0 40px' }}>
         {brand.platformName} — {t('sch.foot.tag')} · <a href={`mailto:${brand.supportEmail || 'sales@aisepadho.com'}`}>{brand.supportEmail || 'sales@aisepadho.com'}</a>
+        <div className="mt">
+          <Link to="/privacy-policy">Privacy Policy</Link> · <Link to="/terms-of-use">Terms of Use</Link> · <Link to="/refund-policy">Refund Policy</Link> · <Link to="/cookie-policy">Cookie Policy</Link>
+        </div>
       </footer>
       {/* Sales chat — institute owners ask questions right on the pitch page */}
       <SalesChat />

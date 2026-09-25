@@ -430,6 +430,15 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_no TEXT;
 CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_no);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof TEXT;
+-- Refund requests (Refund Policy: add-ons never refundable; the base/group
+-- plan is refundable within 15 days of payment; coupon-granted access never
+-- creates a payments row at all, so it's outside this table entirely).
+-- refund_status: none | requested | approved | rejected | refunded
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_reason TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_requested_at TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_note TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_processed_at TEXT;
 
 CREATE TABLE IF NOT EXISTS ai_cache (
   cache_key TEXT PRIMARY KEY,

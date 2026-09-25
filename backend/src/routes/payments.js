@@ -106,13 +106,52 @@ router.get('/my/invoice/:paymentId', authRequired, async (req, res) => {
   </body></html>`)
 })
 
+// ---------------------------------------------------------------------------
+// Refund Policy (see /refund-policy on the site): add-ons and the group-plan
+// seat are ALWAYS non-refundable, no exceptions. The base plan is refundable
+// within 15 days of payment. Coupon-granted access never creates a `payments`
+// row at all (redeemCoupon() in coupons.js grants entitlement directly,
+// ₹0 changes hands), so it's already outside this table — nothing to refund.
+// ---------------------------------------------------------------------------
+const REFUND_WINDOW_DAYS = 15
+
+function refundEligibility(pay) {
+  if (pay.status !== 'success') return { eligible: false, reason: 'Only completed payments are refundable.' }
+  if (pay.refund_status && pay.refund_status !== 'none') return { eligible: false, reason: `Refund already ${pay.refund_status}.` }
+  if (ADDONS[pay.plan] || isGroupPlan(pay.plan)) {
+    return { eligible: false, reason: 'Add-on and group-plan purchases are non-refundable.' }
+  }
+  const paidAt = new Date(String(pay.created_at).replace(' ', 'T') + 'Z')
+  const ageDays = (Date.now() - paidAt.getTime()) / 86400000
+  if (ageDays > REFUND_WINDOW_DAYS) {
+    return { eligible: false, reason: `Refund window (${REFUND_WINDOW_DAYS} days) has expired.` }
+  }
+  return { eligible: true, reason: null }
+}
+
 router.get('/my', authRequired, async (req, res) => {
   const ret = await getRetentionStatus(req.user.id)
   const { getEntitlements } = await import('../utils/addons.js')
   const entitlements = await getEntitlements(req.user.id)
-  const history = await db.prepare(`SELECT id, provider, amount, currency, plan, status, invoice_no, created_at
+  const history = await db.prepare(`SELECT id, provider, amount, currency, plan, status, invoice_no, created_at, refund_status, refund_note
     FROM payments WHERE user_id = ? ORDER BY id DESC LIMIT 20`).all(req.user.id)
+  for (const h of history) {
+    const e = refundEligibility(h)
+    h.refund_eligible = e.eligible
+    h.refund_ineligible_reason = e.eligible ? null : e.reason
+  }
   res.json({ ...ret, ...entitlements, history })
+})
+
+// POST /api/payments/my/refund-request/:paymentId — student requests a refund
+router.post('/my/refund-request/:paymentId', authRequired, async (req, res) => {
+  const pay = await db.prepare('SELECT * FROM payments WHERE id = ? AND user_id = ?').get(Number(req.params.paymentId), req.user.id)
+  if (!pay) return res.status(404).json({ error: 'Payment not found' })
+  const { eligible, reason } = refundEligibility(pay)
+  if (!eligible) return res.status(400).json({ error: reason })
+  await db.prepare(`UPDATE payments SET refund_status = 'requested', refund_requested_at = to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), refund_reason = ? WHERE id = ?`)
+    .run(String(req.body?.reason || '').slice(0, 500), pay.id)
+  res.json({ ok: true, message: 'Refund request submitted. Our team will review it and get back to you.' })
 })
 
 // POST /api/payments/create-order
@@ -329,6 +368,33 @@ async function activateGroupPlan(pay) {
   const { markMemberPaid } = await import('../utils/groups.js')
   return markMemberPaid(groupId, pay.user_id, pay.id)
 }
+
+// GET /api/payments/admin/refunds - refund requests needing attention
+router.get('/admin/refunds', authRequired, platformOnly, async (req, res) => {
+  const rows = await db.prepare(`SELECT p.id, u.email, p.amount, p.currency, p.plan, p.provider, p.invoice_no,
+      p.refund_status, p.refund_reason, p.refund_requested_at, p.refund_note, p.refund_processed_at, p.created_at
+    FROM payments p JOIN users u ON u.id = p.user_id
+    WHERE p.refund_status != 'none'
+    ORDER BY p.refund_requested_at DESC LIMIT 100`).all()
+  res.json({ refunds: rows })
+})
+
+// POST /api/payments/admin/refunds/:paymentId - approve/reject/mark-refunded
+// NOTE: this only updates our own records — it does NOT call the payment
+// gateway's refund API. Admin still has to actually move the money back via
+// the Razorpay/Stripe/PhonePe dashboard (or bank transfer for QR/UPI), then
+// mark it here as 'refunded' for bookkeeping. Access/entitlement is left
+// untouched — revoke it separately if the policy calls for that.
+router.post('/admin/refunds/:paymentId', authRequired, platformOnly, async (req, res) => {
+  const { action, note } = req.body || {}
+  if (!['approve', 'reject', 'mark-refunded'].includes(action)) return res.status(400).json({ error: 'action must be approve, reject or mark-refunded' })
+  const pay = await db.prepare('SELECT * FROM payments WHERE id = ?').get(Number(req.params.paymentId))
+  if (!pay) return res.status(404).json({ error: 'Payment not found' })
+  const nextStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'refunded'
+  await db.prepare(`UPDATE payments SET refund_status = ?, refund_note = ?, refund_processed_at = to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?`)
+    .run(nextStatus, String(note || '').slice(0, 500), pay.id)
+  res.json({ ok: true, refund_status: nextStatus })
+})
 
 // GET /api/payments/admin/status - admin view of retention & payments
 router.get('/admin/status', authRequired, platformOnly, async (req, res) => {

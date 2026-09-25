@@ -150,6 +150,17 @@ export default function Retention() {
     } catch (e) { toast(e.message, 'err') }
   }
 
+  // Refund request — eligibility (add-on vs base plan, 15-day window) is
+  // computed server-side per payment; see refund_eligible/refund_ineligible_reason.
+  const requestRefund = async (paymentId) => {
+    const reason = window.prompt('Refund ki wajah bata do (optional):') || ''
+    try {
+      const r = await api.post(`/payments/my/refund-request/${paymentId}`, { reason })
+      toast(r.message || 'Refund request submitted', 'ok')
+      reload()
+    } catch (e) { toast(e.message, 'err') }
+  }
+
   // 🎟️ Coupon redemption — social-media rollout codes
   const redeemCouponCode = async () => {
     const code = couponCode.trim()
@@ -255,10 +266,20 @@ export default function Retention() {
                       <a href={`/api/payments/my/invoice/${h.id}`} target="_blank" rel="noreferrer" className="tiny">Invoice {h.invoice_no ? `(${h.invoice_no})` : ''}</a>
                     )}
                   </td>
+                  <td style={{ padding: '7px 4px', textAlign: 'right' }}>
+                    {h.refund_status && h.refund_status !== 'none' ? (
+                      <Badge kind={h.refund_status === 'refunded' ? 'green' : h.refund_status === 'rejected' ? 'red' : 'amber'}>refund {h.refund_status}</Badge>
+                    ) : h.refund_eligible ? (
+                      <button className="btn btn-ghost btn-sm" onClick={() => requestRefund(h.id)}>Request refund</button>
+                    ) : h.status === 'success' ? (
+                      <span className="tiny muted" title={h.refund_ineligible_reason}>not refundable</span>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <p className="tiny muted mt">By purchasing you agree to our <Link to="/terms-of-use">Terms</Link> and <Link to="/refund-policy">Refund Policy</Link>.</p>
         </div>
       )}
 

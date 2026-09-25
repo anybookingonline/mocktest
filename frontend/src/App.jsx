@@ -3,9 +3,11 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { ToastProvider } from './components/ui.jsx'
 import { Splash } from './pages/auth/AuthPages.jsx'
+import CookieConsent from './components/CookieConsent.jsx'
 
 import Landing from './pages/Landing.jsx'
 import Schools from './pages/Schools.jsx'
+import Legal from './pages/Legal.jsx'
 import MaintenancePage from './components/MaintenancePage.jsx'
 import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages.jsx'
 import Dashboard from './pages/student/Dashboard.jsx'
@@ -85,10 +87,15 @@ function Root() {
 export default function App() {
   return (
     <ToastProvider>
+      <CookieConsent />
       <MaintenanceGate>
         <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/schools" element={<Schools />} />
+        <Route path="/privacy-policy" element={<Legal doc="privacy" />} />
+        <Route path="/terms-of-use" element={<Legal doc="terms" />} />
+        <Route path="/refund-policy" element={<Legal doc="refund" />} />
+        <Route path="/cookie-policy" element={<Legal doc="cookies" />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
