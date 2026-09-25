@@ -71,6 +71,19 @@ export default function AdminImport() {
     refresh()
   }
 
+  // Tooltip text (title attribute) can't be selected/copied on most browsers
+  // — click-to-copy is the only reliable way to get a failed import's full
+  // error text out to paste elsewhere (e.g. to ask for help fixing it).
+  const copyError = async (error) => {
+    const text = error || 'failed'
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('Error copied to clipboard', 'ok')
+    } catch {
+      window.prompt('Copy karne ke liye Ctrl/Cmd+C dabao:', text)
+    }
+  }
+
   const upload = async () => {
     if (!files.length) { toast('Choose one or more PDF files', 'err'); return }
     if (!examId) { toast('Select the exam this paper belongs to', 'err'); return }
@@ -155,7 +168,11 @@ export default function AdminImport() {
                           <Badge kind="gray">📦 batched — {(i.batch_state || 'PENDING').replace('BATCH_STATE_', '').toLowerCase()}</Badge>
                         </span>
                       )}
-                      {i.status === 'failed' && <span title={i.error || 'failed'}><Badge kind="red">failed ⓘ</Badge></span>}
+                      {i.status === 'failed' && (
+                        <span title={`${i.error || 'failed'} — click to copy`} style={{ cursor: 'pointer' }} onClick={() => copyError(i.error)}>
+                          <Badge kind="red">failed 📋</Badge>
+                        </span>
+                      )}
                     </td>
                     <td className="tiny">{i.total_pages || 0} pg</td>
                     <td className="tiny">{timeAgo(i.created_at)}</td>

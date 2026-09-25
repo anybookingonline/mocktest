@@ -148,6 +148,7 @@ export async function explainQuestionWithAI({ questionText, options, correctAnsw
 
 export const PDF_EXTRACT_PROMPT = `You are a precise question paper parser. Read the attached exam PDF carefully (it may be scanned, image-based, multi-column, or low quality).
 Extract EVERY question along with its options, correct answer (if available), marks, and section. Preserve diagrams/graphs/tables/equations by describing them textually inside the question where needed.
+If the document also contains an answer key — a separate list/table of question numbers with their correct option (often appended at the end, e.g. after the question paper and instructions) — treat it as the AUTHORITATIVE source for correctAnswer: match each answer to its question by question number and fill it in exactly. Do not skip those pages; read them specifically for this. If no answer key is present, leave correctAnswer as stated in this step (a later step solves it if still missing).
 Return ONLY JSON with this exact structure:
 {
   "examCode": "exact exam code e.g. JEE-MAIN",
@@ -172,15 +173,15 @@ Return ONLY JSON with this exact structure:
     }
   ]
 }
-Skip answer-key/instructions/cover pages. If a question cannot be read, skip it silently. Do NOT invent questions.`
+Skip cover/instructions pages (but not a genuine answer-key section — see above). If a question cannot be read, skip it silently. Do NOT invent questions.`
 
 export async function extractPdfQuestions({ buffer, mimeType }) {
   return visionExtract({ buffer, mimeType, prompt: PDF_EXTRACT_PROMPT })
 }
 
-const STRUCTURE_SYSTEM = `You convert extracted question paper data into the platform's canonical question schema. Keep every question verbatim; never alter meaning.`
+const STRUCTURE_SYSTEM = `You convert extracted question paper data into the platform's canonical question schema. Keep every question and every option verbatim — never alter their wording or values. If correctAnswer is missing, blank, or unclear (e.g. the source PDF was the question paper only, with no answer key), work it out yourself by actually solving the question from the given options, and fill it in. Never leave correctAnswer empty for a question that has options. Write the explanation as a clean, confident final solution — never mention that the answer key was missing or that you had to solve it yourself.`
 const STRUCTURE_PROMPT = (batch, meta, exam) => `The following is raw OCR/vision extraction of ${batch.length} question(s) from an exam paper for ${exam ? exam.name : 'an exam'}${meta.year ? ` (${meta.year}${meta.shift ? ', ' + meta.shift : ''})` : ''}. Normalize it into our standard schema.
-Canonical question fields: examId, subject, chapter (infer), topic (infer), type, question, options, correctAnswer, explanation (infer a detailed one if missing), difficulty, marks, negativeMarks, estimatedTime, tags, year, shift, source:"pdf".
+Canonical question fields: examId, subject, chapter (infer), topic (infer), type, question, options, correctAnswer (solve it yourself if not given in the raw data — see system instructions), explanation (infer a detailed one if missing), difficulty, marks, negativeMarks, estimatedTime, tags, year, shift, source:"pdf".
 Output ONLY JSON: { "questions": [ { "examId": ${exam?.id || null}, "subject": "...", "chapter": "...", "topic": "...", "type": "...", "question": "...", "options": [...], "correctAnswer": "...", "explanation": "...", "difficulty": "...", "marks": number, "negativeMarks": number, "estimatedTime": number, "tags": [...], "year": ${meta.year ?? 'null'}, "shift": ${meta.shift ? `"${meta.shift}"` : 'null'} } ] }
 
 RAW DATA:
