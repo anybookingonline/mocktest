@@ -102,30 +102,33 @@ export default function AdminImport() {
             <b>Import history</b>
             <button className="btn btn-sm btn-ghost" onClick={refresh}>Refresh</button>
           </div>
-          <table className="tbl">
-            <thead><tr><th>File</th><th>Status</th><th>Q</th><th>When</th></tr></thead>
-            <tbody>
-              {imports.map((i) => (
-                <tr key={i.id}>
-                  <td className="small" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.filename}</td>
-                  <td>
-                    {i.status === 'completed' && <Badge kind="green">✓ {i.questions_created} added</Badge>}
-                    {i.status === 'processing' && <Badge kind="amber"><span className="spin" style={{ width: 10, height: 10 }} /> processing</Badge>}
-                    {i.status === 'queued' && <Badge kind="gray">queued</Badge>}
-                    {i.status === 'failed' && <Badge kind="red">failed</Badge>}
-                  </td>
-                  <td className="tiny">{i.total_pages || 0} pg</td>
-                  <td className="tiny">{timeAgo(i.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {imports.length === 0 && <div className="empty">No imports yet.</div>}
-          {imports.some((i) => i.status === 'failed') && (
-            <div className="row" style={{ padding: 12 }}>
-              {imports.filter((i) => i.status === 'failed').map((i) => <span key={i.id} className="tiny" style={{ color: 'var(--red)' }}>{i.error}</span>)}
-            </div>
-          )}
+          {/* Fixed-height + scroll so a long upload history can't push the page
+              itself taller — the table scrolls in place instead. Failed-import
+              reasons show as a tooltip on the badge rather than a second,
+              ever-growing list below the table. */}
+          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+            <table className="tbl">
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--panel)', zIndex: 1 }}>
+                <tr><th>File</th><th>Status</th><th>Q</th><th>When</th></tr>
+              </thead>
+              <tbody>
+                {imports.map((i) => (
+                  <tr key={i.id}>
+                    <td className="small" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.filename}</td>
+                    <td>
+                      {i.status === 'completed' && <Badge kind="green">✓ {i.questions_created} added</Badge>}
+                      {i.status === 'processing' && <Badge kind="amber"><span className="spin" style={{ width: 10, height: 10 }} /> processing</Badge>}
+                      {i.status === 'queued' && <Badge kind="gray">queued</Badge>}
+                      {i.status === 'failed' && <span title={i.error || 'failed'}><Badge kind="red">failed ⓘ</Badge></span>}
+                    </td>
+                    <td className="tiny">{i.total_pages || 0} pg</td>
+                    <td className="tiny">{timeAgo(i.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {imports.length === 0 && <div className="empty">No imports yet.</div>}
+          </div>
         </div>
       </div>
     </AdminLayout>
