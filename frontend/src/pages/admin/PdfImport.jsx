@@ -11,6 +11,7 @@ export default function AdminImport() {
   const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null) // { done, total } while a batch is uploading
+  const [batchMode, setBatchMode] = useState(false) // Gemini Batch Mode: ~50% cheaper, up to 24h turnaround
   const [imports, setImports] = useState([])
   const [provider, setProvider] = useState(null)
   const pollRef = useRef(null)
@@ -34,10 +35,7 @@ export default function AdminImport() {
   // overloaded the small Coolify host during bulk imports. The server itself
   // also caps background extraction at 2 concurrent PDFs regardless, so
   // batching client-side just avoids piling up big in-flight request bodies.
-  const upload = async () => {
-    if (!files.length) { toast('Choose one or more PDF files', 'err'); return }
-    if (!examId) { toast('Select the exam this paper belongs to', 'err'); return }
-    if (!provider?.geminiConfigured) { toast('Gemini Vision is required for PDF extraction. Configure the Gemini API key in AI Config.', 'err'); return }
+  const uploadNow = async () => {
     setBusy(true)
     let ok = 0, reused = 0, failed = 0
     for (const [i, f] of files.entries()) {
@@ -54,6 +52,31 @@ export default function AdminImport() {
     }
     setProgress(null)
     toast(`${ok} queued${reused ? `, ${reused} reused` : ''}${failed ? `, ${failed} failed` : ''}`, failed ? 'err' : 'ok')
+  }
+
+  // Gemini Batch Mode: all files go in ONE request — the server uploads each
+  // to Gemini, submits one batch job, and a background poller (every ~15 min)
+  // finishes them once Google's done (up to 24h, usually quicker). No count
+  // limit here beyond the server's array-upload cap (50 per request) — for
+  // more than that, just submit another batch.
+  const uploadBatch = async () => {
+    setBusy(true)
+    try {
+      const d = await api.uploadMany('/import/pdf-batch', files, { examId }, { silentAuth: true })
+      if (!d) { toast('Session expire ho gaya — login karke dobara try karo', 'err'); return }
+      toast(d.message || `${d.accepted || 0} file(s) submitted as a batch job`, 'ok')
+    } catch (e) {
+      toast(e.message, 'err')
+    }
+    refresh()
+  }
+
+  const upload = async () => {
+    if (!files.length) { toast('Choose one or more PDF files', 'err'); return }
+    if (!examId) { toast('Select the exam this paper belongs to', 'err'); return }
+    if (!provider?.geminiConfigured) { toast('Gemini Vision is required for PDF extraction. Configure the Gemini API key in AI Config.', 'err'); return }
+    if (batchMode) await uploadBatch()
+    else await uploadNow()
     setFiles([]); if (fileRef.current) fileRef.current.value = ''
     setBusy(false)
   }
@@ -82,12 +105,20 @@ export default function AdminImport() {
             </p>
           )}
 
+          <label className="row small mb" style={{ alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={batchMode} onChange={(e) => setBatchMode(e.target.checked)} />
+            📦 Batch Mode — ~50% cheaper, up to 24h (checked automatically, no need to wait here)
+          </label>
+
           <button className="btn btn-accent" onClick={upload} disabled={busy}>
             {busy
-              ? (progress ? `Uploading ${progress.done + 1}/${progress.total}…` : 'Uploading…')
-              : `🚀 Extract & import${files.length > 1 ? ` (${files.length} files)` : ''} with Gemini Vision`}
+              ? (progress ? `Uploading ${progress.done + 1}/${progress.total}…` : batchMode ? 'Submitting batch…' : 'Uploading…')
+              : batchMode
+                ? `📦 Submit${files.length > 1 ? ` ${files.length} files` : ''} as batch job`
+                : `🚀 Extract & import${files.length > 1 ? ` (${files.length} files)` : ''} with Gemini Vision`}
           </button>
-          {files.length > 1 && <p className="tiny muted mt">Uploaded one at a time; the server processes up to 2 at once in the background — the rest queue automatically.</p>}
+          {!batchMode && files.length > 1 && <p className="tiny muted mt">Uploaded one at a time; the server processes up to 2 at once in the background — the rest queue automatically.</p>}
+          {batchMode && <p className="tiny muted mt">No limit on file count here — for very large batches, just submit more than once. Import History updates on its own; hit Refresh to check.</p>}
 
           <hr className="divider" />
           <div className="row">
@@ -119,6 +150,11 @@ export default function AdminImport() {
                       {i.status === 'completed' && <Badge kind="green">✓ {i.questions_created} added</Badge>}
                       {i.status === 'processing' && <Badge kind="amber"><span className="spin" style={{ width: 10, height: 10 }} /> processing</Badge>}
                       {i.status === 'queued' && <Badge kind="gray">queued</Badge>}
+                      {i.status === 'batched' && (
+                        <span title={`Gemini batch job: ${i.batch_state || 'pending'}${i.batch_checked_at ? ` (last checked ${timeAgo(i.batch_checked_at)})` : ''}`}>
+                          <Badge kind="gray">📦 batched — {(i.batch_state || 'PENDING').replace('BATCH_STATE_', '').toLowerCase()}</Badge>
+                        </span>
+                      )}
                       {i.status === 'failed' && <span title={i.error || 'failed'}><Badge kind="red">failed ⓘ</Badge></span>}
                     </td>
                     <td className="tiny">{i.total_pages || 0} pg</td>

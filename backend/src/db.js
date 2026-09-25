@@ -37,7 +37,7 @@ const txContext = new AsyncLocalStorage()
 
 const TABLES_WITH_ID = new Set([
   'users', 'exams', 'subjects', 'chapters', 'topics', 'questions', 'tests',
-  'attempts', 'doubts', 'pdf_imports', 'ai_logs', 'notifications', 'telegram_links',
+  'attempts', 'doubts', 'pdf_imports', 'pdf_batches', 'ai_logs', 'notifications', 'telegram_links',
   'institutes', 'institute_invites', 'group_orders', 'group_messages',
   'battle_rooms', 'battle_rounds', 'points_log'
   // NOTE: composite-PK tables (group_members, battle_answers, focus_areas_cache,
@@ -519,6 +519,27 @@ CREATE INDEX IF NOT EXISTS idx_pdf_imports_inst ON pdf_imports(institute_id);
 -- 1 = extraction parked in the review queue (staging) instead of publishing
 -- straight to the shared question bank (institute self-serve imports).
 ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS review_required INTEGER DEFAULT 0;
+
+-- ---------------------------------------------------------------------------
+-- Gemini Batch Mode PDF imports (~50% cheaper than the normal synchronous
+-- path, but async — Google's turnaround target is "up to 24h"). One row per
+-- Gemini batch job; pdf_imports.status='batched' rows point at one via
+-- batch_id + carry their own batch_key to match their result once the batch
+-- finishes. A background poller (routes/import.js) checks pending rows
+-- periodically and finishes them through the normal structure+persist path.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pdf_batches (
+  id SERIAL PRIMARY KEY,
+  batch_name TEXT NOT NULL UNIQUE,
+  model TEXT,
+  state TEXT NOT NULL DEFAULT 'BATCH_STATE_PENDING',
+  created_by INTEGER,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+  checked_at TEXT
+);
+ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES pdf_batches(id) ON DELETE SET NULL;
+ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS batch_key TEXT;
+CREATE INDEX IF NOT EXISTS idx_pdf_imports_batch ON pdf_imports(batch_id);
 
 -- ---------------------------------------------------------------------------
 -- Email (transactional — Resend). Soft verification + password-reset tokens.

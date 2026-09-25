@@ -146,7 +146,7 @@ export async function explainQuestionWithAI({ questionText, options, correctAnsw
 // PDF import pipeline: Gemini Vision understands the PDF -> DeepSeek structures.
 // ---------------------------------------------------------------------------
 
-const PDF_EXTRACT_PROMPT = `You are a precise question paper parser. Read the attached exam PDF carefully (it may be scanned, image-based, multi-column, or low quality).
+export const PDF_EXTRACT_PROMPT = `You are a precise question paper parser. Read the attached exam PDF carefully (it may be scanned, image-based, multi-column, or low quality).
 Extract EVERY question along with its options, correct answer (if available), marks, and section. Preserve diagrams/graphs/tables/equations by describing them textually inside the question where needed.
 Return ONLY JSON with this exact structure:
 {

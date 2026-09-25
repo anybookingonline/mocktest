@@ -291,7 +291,7 @@ async function callGemini({ model, system, messages, parts = [], json = false, t
 
 // --------------------------- Unified chat with fallback ---------------------
 
-function extractJson(text) {
+export function extractJson(text) {
   if (!text) throw new Error('Empty AI response')
   let t = text.trim()
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -442,6 +442,97 @@ export async function visionExtract({ buffer, mimeType, prompt, model = null }) 
   const parsed = extractJson(out)
   if (vkey) await setCachedAi(vkey, 'vision', 'gemini', usedModel, out, parsed)
   return parsed
+}
+
+export async function getVisionModel() {
+  return getConfig('gemini.visionModel', PROVIDERS.gemini.defaultVisionModel)
+}
+
+// ---------------------------------------------------------------------------
+// Gemini Batch Mode (Files API + Batch API) — ~50% cheaper than the normal
+// synchronous vision call above, but async (Google's target turnaround is
+// "up to 24h"). Used by routes/import.js's /pdf-batch route + background
+// poller for large, non-urgent bulk PYQ imports. Field names in the Batch API
+// request bodies MUST be exact camelCase (fileData/fileUri/mimeType/
+// generationConfig/inputConfig/fileName/displayName) — confirmed against
+// Google's discovery doc; unlike plain generateContent, batchGenerateContent
+// rejects snake_case with a 400.
+// ---------------------------------------------------------------------------
+
+export async function geminiFilesUpload(buffer, { displayName, mimeType }) {
+  const apiKey = await getConfig('gemini.apiKey')
+  if (!apiKey) throw new Error('Gemini API key not configured')
+  const base = PROVIDERS.gemini.base.replace('/v1beta', '')
+
+  const start = await fetch(`${base}/upload/v1beta/files`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(buffer.length),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ file: { displayName } })
+  })
+  if (!start.ok) throw new Error(`Gemini Files API start failed: HTTP ${start.status} ${await start.text()}`)
+  const uploadUrl = start.headers.get('x-goog-upload-url')
+  if (!uploadUrl) throw new Error('Gemini Files API did not return an upload URL')
+
+  const done = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { 'Content-Length': String(buffer.length), 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' },
+    body: buffer
+  })
+  if (!done.ok) throw new Error(`Gemini Files API upload failed: HTTP ${done.status} ${await done.text()}`)
+  let file = (await done.json()).file
+  for (let i = 0; file?.state === 'PROCESSING' && i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+    const r2 = await fetch(`${base}/v1beta/${file.name}`, { headers: { 'x-goog-api-key': apiKey } })
+    file = await r2.json()
+  }
+  if (file?.state === 'FAILED') throw new Error(`Gemini file processing failed for ${displayName}`)
+  return file // { name: "files/xxx", uri, state, ... }
+}
+
+export async function createGeminiBatch(model, requestsJsonl, displayName) {
+  const apiKey = await getConfig('gemini.apiKey')
+  if (!apiKey) throw new Error('Gemini API key not configured')
+  const base = PROVIDERS.gemini.base.replace('/v1beta', '')
+  const jsonlFile = await geminiFilesUpload(Buffer.from(requestsJsonl, 'utf8'), { displayName: `${displayName}-requests.jsonl`, mimeType: 'application/jsonl' })
+
+  const res = await fetch(`${base}/v1beta/models/${model}:batchGenerateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batch: { displayName, inputConfig: { fileName: jsonlFile.name } } })
+  })
+  if (!res.ok) throw new Error(`Gemini batchGenerateContent failed: HTTP ${res.status} ${await res.text()}`)
+  return res.json() // { name: "batches/xxxx", state, ... }
+}
+
+export async function getGeminiBatch(batchName) {
+  const apiKey = await getConfig('gemini.apiKey')
+  if (!apiKey) throw new Error('Gemini API key not configured')
+  const base = PROVIDERS.gemini.base.replace('/v1beta', '')
+  const res = await fetch(`${base}/v1beta/${batchName}`, { headers: { 'x-goog-api-key': apiKey } })
+  if (!res.ok) throw new Error(`Gemini batch status failed: HTTP ${res.status} ${await res.text()}`)
+  return res.json()
+}
+
+export async function downloadGeminiResultsFile(fileName) {
+  const apiKey = await getConfig('gemini.apiKey')
+  if (!apiKey) throw new Error('Gemini API key not configured')
+  const base = PROVIDERS.gemini.base.replace('/v1beta', '')
+  const res = await fetch(`${base}/download/v1beta/${fileName}:download?alt=media`, { headers: { 'x-goog-api-key': apiKey } })
+  if (!res.ok) throw new Error(`Gemini results download failed: HTTP ${res.status} ${await res.text()}`)
+  return res.text()
+}
+
+// Confirmed enum (Google discovery doc, GenerateContentBatch.state):
+// BATCH_STATE_PENDING | RUNNING | SUCCEEDED | FAILED | CANCELLED | EXPIRED.
+export function geminiBatchState(job) {
+  return job?.state || 'BATCH_STATE_UNSPECIFIED'
 }
 
 // ---------------------------------------------------------------------------

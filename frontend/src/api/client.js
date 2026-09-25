@@ -56,5 +56,13 @@ export const api = {
     fd.append('file', file)
     for (const [k, v] of Object.entries(extra)) fd.append(k, v)
     return request(p, { method: 'POST', body: fd, ...opts })
+  },
+  // Multiple files in one request under the 'files' field (Gemini Batch Mode
+  // PDF import — the server submits them all as one batch job).
+  uploadMany: (p, files, extra = {}, opts = {}) => {
+    const fd = new FormData()
+    for (const f of files) fd.append('files', f)
+    for (const [k, v] of Object.entries(extra)) fd.append(k, v)
+    return request(p, { method: 'POST', body: fd, ...opts })
   }
 }
