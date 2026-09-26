@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
 import { pointsSummary, pointsLeaderboard } from '../utils/points.js'
-import { getEntitlements, isAddonEnabled } from '../utils/addons.js'
+import { getEntitlements, isAddonEnabled, listPlans, doubtCapFor } from '../utils/addons.js'
 import { trackVisit, geoFromHeaders } from '../utils/visits.js'
 
 const router = express.Router()
@@ -86,6 +86,26 @@ router.post('/report/share', async (req, res) => {
 router.post('/report/share/revoke', async (req, res) => {
   await db.prepare('DELETE FROM report_shares WHERE user_id = ?').run(req.user.id)
   res.json({ ok: true })
+})
+
+// GET /api/analytics/entitlements — what THIS student gets free vs what the
+// paid plan adds (live limits from the admin-configurable settings). The
+// Retention page renders the free-vs-paid comparison from this + listPlans.
+router.get('/entitlements', async (req, res) => {
+  const ent = await getEntitlements(req.user.id)
+  const [freeCap, paidCap, catalog] = await Promise.all([
+    doubtCapFor({ aiPower: false, retention: false, voiceDoubts: false }),
+    doubtCapFor({ aiPower: true }),
+    listPlans()
+  ])
+  const plan = catalog.plans[0]
+  res.json({
+    paid: ent.aiPower || ent.retention || ent.voiceDoubts,
+    myDoubtCap: await doubtCapFor(ent),
+    free: { doubtsPerDay: freeCap, dataHoldHours: Number(plan.freeHoldHours) },
+    paid: { doubtsPerDay: paidCap, dataHoldDays: Number(plan.days), price: plan.price, currency: plan.currency },
+    addons: catalog.addons
+  })
 })
 
 // GET /api/analytics/overview - student dashboard stats

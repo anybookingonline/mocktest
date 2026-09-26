@@ -20,6 +20,7 @@ export default function Retention() {
   const [couponCode, setCouponCode] = useState('')
   const [couponBusy, setCouponBusy] = useState(false)
   const [addonCycle, setAddonCycle] = useState({}) // addonId -> 'monthly' | 'yearly'
+  const [entl, setEntl] = useState(null)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -37,6 +38,7 @@ export default function Retention() {
   const reload = () => {
     api.get('/payments/plans').then((d) => { setPlans(d); setGateway((g) => g || d.provider) }).catch(() => {})
     api.get('/payments/my').then(setStatus).catch(() => {})
+    api.get('/analytics/entitlements').then(setEntl).catch(() => {})
   }
 
   useEffect(() => { reload() }, [])
@@ -244,6 +246,34 @@ export default function Retention() {
         </div>
         <Badge kind={active ? 'green' : 'red'}>{active ? 'Retention active' : 'Free plan'}</Badge>
       </div>
+
+      {/* Free vs Paid — live limits pulled from admin-configurable settings,
+          so the comparison always matches what the owner set in Business Hub. */}
+      {entl && (
+        <div className="grid grid-2 mb">
+          <div className="card">
+            <div className="spread mb"><b>🆓 Free me kya milta hai</b><span className="chip">₹0</span></div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9, fontSize: 13.5 }}>
+              <li>✅ Mock tests, adaptive practice, PYQ practice — unlimited</li>
+              <li>✅ AI doubts: <b>{entl.free.doubtsPerDay}/day</b></li>
+              <li>✅ Battles, groups, leaderboard, points & streaks</li>
+              <li>✅ Analytics: weak topics, trends, speed analysis</li>
+              <li>✅ Bookmarks + revision mode</li>
+              <li>⚠️ Data hold: sirf <b>{entl.free.dataHoldHours} hours</b> — uske baad history/results/doubts auto-delete</li>
+            </ul>
+          </div>
+          <div className="card" style={{ borderColor: 'var(--accent)' }}>
+            <div className="spread mb"><b>⭐ Paid ({entl.paid.currency} {entl.paid.price}/year) me kya extra</b><Badge kind="green">Best value</Badge></div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9, fontSize: 13.5 }}>
+              <li>🚀 AI doubts: <b>{entl.paid.doubtsPerDay}/day</b> ({Math.round(entl.paid.doubtsPerDay / Math.max(1, entl.free.doubtsPerDay))}× zyada)</li>
+              <li>🗄️ Data safe: <b>{entl.paid.dataHoldDays} days</b> — kuch delete nahi hota</li>
+              <li>✅ Free ka sab kuch included</li>
+              <li>🧩 Add-ons alag se: AI Power, Voice, CA Pro, Focus Areas, Smart Revision, Analytics Pro (neeche)</li>
+              <li>👪 Parent report + heatmap (Analytics Pro add-on se)</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* --------------------------- Payment history + invoices --------------------------- */}
       {status?.history?.length > 0 && (

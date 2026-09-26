@@ -37,6 +37,17 @@ export function PlanPricingPanel({ cfg, set, save }) {
         </label>
       </div>
       <p className="tiny muted mb">Free users' data is automatically deleted after the free hold window. Paid users' data is kept for the retention period.</p>
+      <hr className="divider" />
+      <b className="small mb" style={{ display: 'block' }}>🤖 AI doubt limits (daily caps)</b>
+      <div className="row">
+        <label className="field" style={{ flex: 1 }}><span>Free users — doubts/day</span>
+          <input type="number" min="1" className="input" value={cfg['monetization.freeDoubtsPerDay'] || 15} onChange={set('monetization.freeDoubtsPerDay')} />
+        </label>
+        <label className="field" style={{ flex: 1 }}><span>Paid users — doubts/day (fair-use)</span>
+          <input type="number" min="1" className="input" value={cfg['monetization.paidDoubtsPerDay'] || 50} onChange={set('monetization.paidDoubtsPerDay')} />
+        </label>
+      </div>
+      <p className="tiny muted mb">Ye caps /ai/doubt, /ai/doubt/socratic, /ai/photo-solve aur Telegram doubts — sab par live lagte hain. Student-facing Plans page bhi inhi values se free-vs-paid comparison dikhata hai. Add-on (AI Power etc.) lena optional hai — base plan lene wale bhi paid cap me aate hain.</p>
       <button className="btn btn-primary" onClick={save}>Save plan pricing</button>
     </div>
   )

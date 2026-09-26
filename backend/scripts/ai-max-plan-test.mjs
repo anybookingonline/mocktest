@@ -24,7 +24,7 @@ const { listPlans } = await import('../src/utils/addons.js')
 const plans = await listPlans()
 const aiMax = plans.addons.find((a) => a.id === 'ai_max')
 ok('AI Max addon in student Plans catalog', !!aiMax, aiMax ? `price=${aiMax.price}` : 'missing')
-ok('AI Max default price 399', aiMax?.price === 399, `got ${aiMax?.price}`)
+ok('AI Max default price 399 (yearly cycle)', aiMax?.yearly?.price === 399, `got ${aiMax?.yearly?.price}`)
 
 // 2. Enabled flag off → hidden (flag actually gates the listing)
 const { setConfig } = await import('../src/utils/aiService.js')
@@ -37,6 +37,7 @@ ok('AI Max returns when re-enabled', !!plansOn.addons.find((a) => a.id === 'ai_m
 
 // 3. Admin settings GET exposes the aiMax keys the UI binds to
 const { ADDONS } = await import('../src/utils/addons.js')
-ok('ai_max addon def intact', ADDONS.ai_max?.priceKey === 'addons.aiMaxPrice')
+// Monthly/yearly cycle refactor moved priceKey under yearly — assert current shape
+ok('ai_max addon def intact', ADDONS.ai_max?.yearly?.priceKey === 'addons.aiMaxPrice' && ADDONS.ai_max?.monthly?.priceKey === 'addons.aiMaxPriceMonthly')
 
 process.exit(results.every(Boolean) ? 0 : 1)

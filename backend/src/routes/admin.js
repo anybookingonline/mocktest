@@ -120,6 +120,7 @@ router.get('/reports', async (req, res) => {
 router.get('/settings', async (req, res) => {
   const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'platform.logoUrl', 'platform.domain', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'monetization.gateways', 'monetization.provider', 'monetization.price', 'monetization.currency', 'monetization.retentionDays', 'monetization.freeHoldHours',
+    'monetization.freeDoubtsPerDay', 'monetization.paidDoubtsPerDay',
     ...addonConfigKeys(),
     'features.currentAffairs', 'features.focusAreas',
     'features.groupStudy', 'features.groupDiscussions', 'features.battles',
