@@ -401,8 +401,8 @@ export default function Retention() {
           <div style={{ fontSize: 30 }}>🎯</div>
           <b className="small mt mb" style={{ display: 'block' }}>Kya choose karun?</b>
           <p className="tiny muted" style={{ flex: 1 }}>
-            {active ? 'Retention ho gaya hai — ab AI Power Pack lo agar aap roz AI mocks aur Telegram par unlimited doubts chahte ho.'
-              : 'Pehle Data Retention lo (aapki mehnat ka data safe rahega), phir AI Power Pack unlimited AI ke liye.'}
+            {active ? 'Retention ho gaya hai — ab AI Power Pack lo agar aap roz unlimited AI mocks aur zyada Telegram doubts (50/day) chahte ho.'
+              : 'Pehle Data Retention lo (aapki mehnat ka data safe rahega), phir AI Power Pack — roz 50 tak AI doubts + unlimited mocks ke liye.'}
           </p>
           <Link to="/doubts" className="btn btn-ghost btn-sm">Try the AI tutor →</Link>
         </div>

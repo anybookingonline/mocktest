@@ -2,7 +2,7 @@ import { Router } from 'express'
 import db from '../db.js'
 import { getConfig, setConfig } from '../utils/aiService.js'
 import { solveDoubtWithAI } from '../utils/aiTasks.js'
-import { getEntitlements } from '../utils/addons.js'
+import { getEntitlements, doubtCapFor } from '../utils/addons.js'
 import { aiLimiter } from '../middleware/rateLimit.js'
 
 // White-label: the bot speaks with the platform's (or institute's) name.
@@ -90,18 +90,22 @@ async function handleUpdate(update) {
 
   if (text === '/help' || text === '/start') return send(chatId, HELP)
 
+  const ent = await getEntitlements(link.user_id)
+  // Fair-use, not unlimited, even for AI Power Pack — same cap the app itself
+  // enforces (monetization.paidDoubtsPerDay), so Telegram can't be used to
+  // route around the very cap that makes the cost predictable.
+  const cap = ent.aiPower ? await doubtCapFor(ent) : DAILY_FREE
+
   if (text === '/stats') {
-    const unlimited = (await getEntitlements(link.user_id)).aiPower
-    if (unlimited) return send(chatId, '⚡ *AI Power Pack* active — *unlimited* doubts on Telegram.')
     const used = Number(await getConfig(usageKey(link.user_id), '0')) || 0
-    return send(chatId, `Aaj ke doubts: *${used}/${DAILY_FREE}* used.`)
+    return send(chatId, ent.aiPower ? `⚡ *AI Power Pack* active — *${used}/${cap}* doubts today (fair-use).` : `Aaj ke doubts: *${used}/${cap}* used.`)
   }
 
-  // Doubt -> AI. AI Power Pack holders get unlimited; others hit the daily cap.
-  if (!((await getEntitlements(link.user_id)).aiPower)) {
+  // Doubt -> AI, against the fair-use cap above.
+  {
     const used = Number(await getConfig(usageKey(link.user_id), '0')) || 0
-    if (used >= DAILY_FREE) {
-      return send(chatId, 'Aaj ka doubt limit (10) khatam ho gaya. Kal phir try karo — ya app me AI Power Pack dekho (unlimited doubts)! 📚')
+    if (used >= cap) {
+      return send(chatId, `Aaj ka doubt limit (${cap}) khatam ho gaya. Kal phir try karo${ent.aiPower ? '' : ' — ya app me AI Power Pack dekho, roz zyada doubts milte hain'}! 📚`)
     }
     await setConfig(usageKey(link.user_id), String(used + 1))
   }

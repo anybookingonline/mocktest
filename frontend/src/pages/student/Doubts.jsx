@@ -127,10 +127,10 @@ export default function Doubts() {
         <div className="card mb">
           <div className="spread">
             <div>
-              <b className="small" style={{ display: 'block' }}>💬 Telegram par bhi doubt pucho {flags.telegramUnlimited ? <Badge kind="amber">⚡ unlimited</Badge> : <Badge kind="gray">10/day free</Badge>}</b>
+              <b className="small" style={{ display: 'block' }}>💬 Telegram par bhi doubt pucho {flags.telegramUnlimited ? <Badge kind="amber">⚡ 50/day</Badge> : <Badge kind="gray">10/day free</Badge>}</b>
               <p className="tiny muted">{flags.telegramUnlimited
-                ? 'AI Power Pack active — Telegram par unlimited doubts, koi daily cap nahi.'
-                : 'Telegram app kholo, bot ko start karo aur apna link code bhejo — 10 doubts/day free. AI Power Pack se unlimited.'}</p>
+                ? 'AI Power Pack active — Telegram par roz 50 tak doubts (fair-use).'
+                : 'Telegram app kholo, bot ko start karo aur apna link code bhejo — 10 doubts/day free. AI Power Pack se roz 50 tak.'}</p>
             </div>
             {link && (
               <div style={{ textAlign: 'center' }}>

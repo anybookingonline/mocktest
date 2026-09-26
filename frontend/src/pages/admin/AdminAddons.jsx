@@ -9,9 +9,9 @@ import { useToast } from '../../components/ui.jsx'
 // /admin/settings key-value store AIConfig.jsx uses — this is just a
 // dedicated, cleaner UI for the add-on subset of it.
 const ADDON_FIELDS = [
-  { id: 'aiPower', icon: '⚡', name: 'AI Power Pack', note: 'Unlimited (fair-use) AI doubts + mocks + priority queue.', enabledKey: 'addons.aiPowerEnabled', monthlyKey: 'addons.aiPowerPriceMonthly', monthlyDefault: 29, yearlyKey: 'addons.aiPowerPrice', yearlyDefault: 199 },
+  { id: 'aiPower', icon: '⚡', name: 'AI Power Pack', note: 'Up to 50 AI doubts/day (fair-use) + unlimited AI mocks + priority queue.', enabledKey: 'addons.aiPowerEnabled', monthlyKey: 'addons.aiPowerPriceMonthly', monthlyDefault: 29, yearlyKey: 'addons.aiPowerPrice', yearlyDefault: 199 },
   { id: 'aiMax', icon: '💎', name: 'AI Max', note: 'Top tier — includes Power + Voice + Smart Revision + Analytics Pro.', enabledKey: 'addons.aiMaxEnabled', monthlyKey: 'addons.aiMaxPriceMonthly', monthlyDefault: 49, yearlyKey: 'addons.aiMaxPrice', yearlyDefault: 399 },
-  { id: 'voice', icon: '🎙️', name: 'Voice Doubts', note: 'Unlimited Whisper speech-to-text doubts.', enabledKey: 'addons.voiceEnabled', monthlyKey: 'addons.voicePriceMonthly', monthlyDefault: 15, yearlyKey: 'addons.voicePrice', yearlyDefault: 49 },
+  { id: 'voice', icon: '🎙️', name: 'Voice Doubts', note: 'Whisper speech-to-text doubts, fair-use daily limit.', enabledKey: 'addons.voiceEnabled', monthlyKey: 'addons.voicePriceMonthly', monthlyDefault: 15, yearlyKey: 'addons.voicePrice', yearlyDefault: 49 },
   { id: 'ca', icon: '📰', name: 'Current Affairs Pro', note: 'Daily AI current-affairs quiz.', enabledKey: 'addons.caEnabled', monthlyKey: 'addons.caPriceMonthly', monthlyDefault: 19, yearlyKey: 'addons.caPrice', yearlyDefault: 99 },
   { id: 'focus', icon: '🔥', name: 'AI Focus Areas', note: 'PYQ frequency-ranked priority topics.', enabledKey: 'addons.focusEnabled', monthlyKey: 'addons.focusPriceMonthly', monthlyDefault: 15, yearlyKey: 'addons.focusPrice', yearlyDefault: 79 },
   { id: 'smartRevision', icon: '🔁', name: 'Smart Revision Pack', note: 'AI revision mocks + flashcards + topic summaries.', enabledKey: 'addons.smartRevisionEnabled', monthlyKey: 'addons.smartRevisionPriceMonthly', monthlyDefault: 19, yearlyKey: 'addons.smartRevisionPriceYearly', yearlyDefault: 149 },

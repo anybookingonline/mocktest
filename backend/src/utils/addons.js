@@ -17,11 +17,12 @@ export const ADDONS = {
     id: 'ai_power',
     name: 'AI Power Pack',
     icon: '⚡',
-    // "Unlimited" marketing-wise, but economically it's a high soft-cap:
-    // monetization.aiPowerDoubtsPerDay (default 50) — protects against the
-    // rare script-abuse user while feeling unlimited (docs/pricing-audit.md).
-    description: 'Unlimited AI doubts (fair-use 50/day), unlimited mock generation, priority AI queue.',
-    perks: ['AI doubts 50/day fair-use (app + Telegram)', 'Unlimited AI full-mock generation', 'Priority AI queue'],
+    // Never say "unlimited doubts" — AI usage is a real variable cost and
+    // this is a capped soft-limit (monetization.paidDoubtsPerDay, default
+    // 50), not truly unlimited. Mock generation has no explicit cap today,
+    // so "unlimited" there is accurate as implemented.
+    description: 'Up to 50 AI doubts/day + unlimited AI mock generation (fair-use policy), priority AI queue.',
+    perks: ['Up to 50 AI doubts/day (app + Telegram, fair-use)', 'Unlimited AI full-mock generation', 'Priority AI queue'],
     enabledKey: 'addons.aiPowerEnabled',
     monthly: { priceKey: 'addons.aiPowerPriceMonthly', defaultPrice: 29, days: 30 },
     yearly: { priceKey: 'addons.aiPowerPrice', defaultPrice: 199, days: 365 }
@@ -32,7 +33,7 @@ export const ADDONS = {
     icon: '💎',
     // Top tier: everything in AI Power + Voice + Smart Revision + Analytics
     // Pro + priority. Internally the same 50/day soft-cap applies.
-    description: 'Sab kuch unlimited (fair-use 50/day) + Voice Doubts + Smart Revision Pack + Analytics Pro included — poora AI teacher experience.',
+    description: 'Up to 50 AI doubts/day + unlimited AI mocks (fair-use) + Voice Doubts + Smart Revision Pack + Analytics Pro included — poora AI teacher experience.',
     perks: ['Everything in AI Power Pack', '🎙️ Voice Doubts included', '🔁 Smart Revision Pack included', '📊 Analytics Pro included', 'Priority AI response queue'],
     enabledKey: 'addons.aiMaxEnabled',
     monthly: { priceKey: 'addons.aiMaxPriceMonthly', defaultPrice: 49, days: 30 },
@@ -42,8 +43,8 @@ export const ADDONS = {
     id: 'voice_doubts',
     name: 'Voice Doubts',
     icon: '🎙️',
-    description: 'Bol kar doubt pucho — Hinglish speech-to-text (Whisper) unlimited.',
-    perks: ['Unlimited voice doubts', 'Hindi + English + Hinglish'],
+    description: 'Bol kar doubt pucho — Hinglish speech-to-text (Whisper), fair-use.',
+    perks: ['Voice doubts, fair-use daily limit applies', 'Hindi + English + Hinglish'],
     enabledKey: 'addons.voiceEnabled',
     monthly: { priceKey: 'addons.voicePriceMonthly', defaultPrice: 15, days: 30 },
     yearly: { priceKey: 'addons.voicePrice', defaultPrice: 49, days: 365 }
@@ -202,7 +203,10 @@ export async function hasAddon(userId, addonId) {
 // share the high soft-cap; retention-plan buyers keep the mid cap; free users
 // the low hook cap. All values admin-configurable (no redeploy).
 export async function doubtCapFor(ent) {
-  if (ent.aiPower || ent.retention) return Number(await getConfig('monetization.paidDoubtsPerDay', '50')) || 50
+  // voiceDoubts included: a standalone Voice Doubts buyer would otherwise
+  // still be capped at the free 15/day limit for the very doubts they paid
+  // to ask by voice — same paid tier as retention/aiPower.
+  if (ent.aiPower || ent.retention || ent.voiceDoubts) return Number(await getConfig('monetization.paidDoubtsPerDay', '50')) || 50
   return Number(await getConfig('monetization.freeDoubtsPerDay', '15')) || 15
 }
 

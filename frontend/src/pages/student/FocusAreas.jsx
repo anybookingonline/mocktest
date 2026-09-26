@@ -69,7 +69,7 @@ export default function FocusAreas() {
           <div style={{ fontSize: 40, marginBottom: 10 }}>🔥</div>
           <b style={{ fontSize: 18 }}>AI Focus Areas ek Pro feature hai</b>
           <p className="muted small" style={{ maxWidth: 460, margin: '10px auto 18px' }}>
-            Koi bhi paid plan (Data Retention ya AI Power Pack) Focus Areas unlock kar deta hai — saath me unlimited battles priority, unlimited AI doubts aur data retention bhi.
+            AI Focus Areas add-on lo (ya AI Power Pack / AI Max — dono me ye included hai) — topic-wise PYQ frequency ranking, priority order for revision.
           </p>
           <Link to="/retention" className="btn btn-primary">Unlock with Pro →</Link>
         </div>
