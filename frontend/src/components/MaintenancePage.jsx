@@ -151,6 +151,11 @@ export default function MaintenancePage() {
       <p className="tiny muted" style={{ marginTop: 26, opacity: 0.7 }}>
         {t('maint.pending')}
       </p>
+      {/* Staff escape hatch: owner/admin can always sign in during maintenance.
+          Deliberately unobtrusive — students won't notice or use it. */}
+      <a href="/admin-login" className="tiny muted" style={{ marginTop: 10, opacity: 0.55, textDecoration: 'underline dotted' }}>
+        {t('maint.staffLogin')}
+      </a>
       <p className="tiny muted" style={{ marginTop: 6, opacity: 0.6 }}>
         {t('maint.contact')} {support ? <a href={`mailto:${support}`}>{support}</a> : <a href="mailto:support@aisepadho.com">support@aisepadho.com</a>}
       </p>

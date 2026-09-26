@@ -211,7 +211,8 @@ const strings = {
     'maint.cta': 'Notify me',
     'maint.thanks': "Thanks! We'll email you as soon as we're back.",
     'maint.badEmail': 'Please enter a valid email address.',
-    'maint.contact': 'Need help? Contact support:'
+    'maint.contact': 'Need help? Contact support:',
+    'maint.staffLogin': 'Staff login'
   },
 
   hinglish: {
@@ -398,7 +399,8 @@ const strings = {
     'maint.cta': 'Notify karo',
     'maint.thanks': 'Thanks! Wapas aate hi email kar denge.',
     'maint.badEmail': 'Sahi email daalo.',
-    'maint.contact': 'Madad chahiye? Support se baat karo:'
+    'maint.contact': 'Madad chahiye? Support se baat karo:',
+    'maint.staffLogin': 'Staff login'
   },
 
   hi: {
@@ -585,7 +587,8 @@ const strings = {
     'maint.cta': 'मुझे सूचित करें',
     'maint.thanks': 'धन्यवाद! वापस आते ही ईमेल कर देंगे।',
     'maint.badEmail': 'कृपया सही ईमेल पता दर्ज करें।',
-    'maint.contact': 'मदद चाहिए? सपोर्ट से बात करें:'
+    'maint.contact': 'मदद चाहिए? सपोर्ट से बात करें:',
+    'maint.staffLogin': 'स्टाफ़ लॉगिन'
   }
 }
 

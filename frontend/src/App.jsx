@@ -38,13 +38,11 @@ import AdminAI from './pages/admin/AIConfig.jsx'
 import AdminUsers from './pages/admin/Users.jsx'
 import AdminReports from './pages/admin/Reports.jsx'
 import AdminSettings from './pages/admin/Settings.jsx'
-import AdminPayments from './pages/admin/Payments.jsx'
-import AdminAddons from './pages/admin/AdminAddons.jsx'
-import AdminCoupons from './pages/admin/Coupons.jsx'
-import AdminMarketing from './pages/admin/Marketing.jsx'
 import AdminInstitutes from './pages/admin/Institutes.jsx'
 import InstituteDashboard from './pages/admin/InstituteDashboard.jsx'
 import AdminVisitors from './pages/admin/Visitors.jsx'
+import AdminLogin from './pages/admin/AdminLogin.jsx'
+import BusinessHub from './pages/admin/BusinessHub.jsx'
 
 function Protected({ children, admin = false }) {
   const { user, loading } = useAuth()
@@ -57,9 +55,12 @@ function Protected({ children, admin = false }) {
 // Maintenance mode: poll the public status endpoint every 30s. When the
 // admin flips the toggle, every non-admin surface swaps to the maintenance
 // landing page within one poll cycle — no redeploy needed. Admins keep the
-// full app so they can verify their work mid-maintenance.
+// full app so they can verify their work mid-maintenance. /admin-login is
+// exempt so the owner can always reach the staff login during maintenance
+// (its backend /auth/login route also bypasses the API gate).
 function MaintenanceGate({ children }) {
   const { user, loading } = useAuth()
+  const { pathname } = useLocation()
   const [on, setOn] = useState(false)
   const isAdmin = !!user && user.role === 'admin'
 
@@ -75,6 +76,7 @@ function MaintenanceGate({ children }) {
     return () => { live = false; clearInterval(iv) }
   }, [])
 
+  if (pathname === '/admin-login') return children
   if (loading) return <Splash />
   if (on && !isAdmin) return <MaintenancePage />
   return children
@@ -133,6 +135,8 @@ export default function App() {
         <Route path="/cookie-policy" element={<Legal doc="cookies" />} />
         <Route path="/report/:token" element={<ParentReport />} />
         <Route path="/login" element={<LoginPage />} />
+        {/* Staff-only, English-only login — reachable even during maintenance */}
+        <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -166,10 +170,13 @@ export default function App() {
         <Route path="/admin/reports" element={<Protected admin><AdminReports /></Protected>} />
         <Route path="/admin/visitors" element={<Protected admin><AdminVisitors /></Protected>} />
         <Route path="/admin/settings" element={<Protected admin><AdminSettings /></Protected>} />
-        <Route path="/admin/payments" element={<Protected admin><AdminPayments /></Protected>} />
-        <Route path="/admin/addons" element={<Protected admin><AdminAddons /></Protected>} />
-        <Route path="/admin/coupons" element={<Protected admin><AdminCoupons /></Protected>} />
-        <Route path="/admin/marketing" element={<Protected admin><AdminMarketing /></Protected>} />
+        {/* Business Hub: payments/addons/pricing/gateways/coupons/marketing in one tabbed page.
+            Old routes redirect to their Hub tab so bookmarks/links keep working. */}
+        <Route path="/admin/business" element={<Protected admin><BusinessHub /></Protected>} />
+        <Route path="/admin/payments" element={<Navigate to="/admin/business" replace />} />
+        <Route path="/admin/addons" element={<Navigate to="/admin/business?tab=addons" replace />} />
+        <Route path="/admin/coupons" element={<Navigate to="/admin/business?tab=coupons" replace />} />
+        <Route path="/admin/marketing" element={<Navigate to="/admin/business?tab=marketing" replace />} />
         <Route path="/admin/institutes" element={<Protected admin><AdminInstitutes /></Protected>} />
         <Route path="/admin/institute" element={<Protected admin><InstituteDashboard /></Protected>} />
 

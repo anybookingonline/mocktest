@@ -37,7 +37,8 @@ function CopyBlock({ label, text }) {
   )
 }
 
-export default function Marketing() {
+// Content-only version — reused inside the Business Hub tabs.
+export function MarketingPanel() {
   const toast = useToast()
   const [tab, setTab] = useState('content')
   const [busy, setBusy] = useState(false)
@@ -225,7 +226,7 @@ export default function Marketing() {
   )
 
   return (
-    <AdminLayout title="📣 Marketing Studio">
+    <>
       <p className="muted small mb">
         Aapka AI growth engine — content, outreach aur sales-support, sab aapke existing AI keys par.
         Har cheez <b>review karke</b> post karo; AI draft deta hai, aapki authenticity hi convert karti hai.
@@ -239,6 +240,14 @@ export default function Marketing() {
       {tab === 'assets' && renderAssets()}
       {tab === 'outreach' && renderOutreach()}
       {tab === 'stats' && renderStats()}
+    </>
+  )
+}
+
+export default function Marketing() {
+  return (
+    <AdminLayout title="📣 Marketing Studio">
+      <MarketingPanel />
     </AdminLayout>
   )
 }

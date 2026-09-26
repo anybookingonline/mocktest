@@ -23,7 +23,8 @@ const SOURCE_CHIPS = [
   { label: '👋 WhatsApp', value: 'whatsapp' }
 ]
 
-export default function Coupons() {
+// Content-only version — reused inside the Business Hub tabs.
+export function CouponsPanel() {
   const toast = useToast()
   const [data, setData] = useState(null)
   const [addons, setAddons] = useState([])
@@ -83,7 +84,7 @@ export default function Coupons() {
   const applyPreset = (p) => setForm((f) => ({ ...f, ...p.patch }))
 
   return (
-    <AdminLayout title="🎟️ Coupons (Rollout Campaigns)">
+    <>
       <p className="muted small mb">
         Social-media campaigns ke liye codes banao. Har code ka source tag rakhta hai —
         yahan se pata chalega kaunsa platform (Instagram/Telegram/YouTube) sabse zyada users la raha hai.
@@ -210,6 +211,14 @@ export default function Coupons() {
           </table>
         )}
       </div>
+    </>
+  )
+}
+
+export default function Coupons() {
+  return (
+    <AdminLayout title="🎟️ Coupons (Rollout Campaigns)">
+      <CouponsPanel />
     </AdminLayout>
   )
 }

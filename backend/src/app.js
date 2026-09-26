@@ -118,15 +118,18 @@ app.get('/api/meta/status', async (req, res) => {
 })
 
 // Maintenance gate: while enabled, every student-facing API 503s with a
-// machine-readable code the SPA can react to. /api/auth/me stays open so an
-// already-loaded session can still resolve the user role before routing.
-// Authenticated admins also pass (they're the ones running the update — the
-// admin exam-management pages consume student-shaped endpoints like /exams).
+// machine-readable code the SPA can react to. Kept open: /admin paths,
+// /auth/me (SPA role resolution) AND the auth endpoints the OWNER needs to
+// sign in during maintenance — /auth/login, /auth/forgot-password,
+// /auth/reset-password. Letting login through is safe: a student session
+// still gets 503 on every student API below this gate; only /admin-prefixed
+// routes (role-checked) and these auth routes stay reachable.
 // /api/health and /api/meta/status are mounted above this line, so they stay
 // reachable for Coolify uptime checks and the poller.
 app.use('/api', async (req, res, next) => {
   if (!await maintenanceEnabled()) return next()
-  if (req.path.startsWith('/admin') || req.path === '/auth/me') return next()
+  if (req.path.startsWith('/admin') || req.path === '/auth/me' ||
+      req.path === '/auth/login' || req.path === '/auth/forgot-password' || req.path === '/auth/reset-password') return next()
   const h = req.headers.authorization || ''
   if (h.startsWith('Bearer ')) {
     try { if (verifyToken(h.slice(7))?.role === 'admin') return next() } catch { /* not an admin token */ }

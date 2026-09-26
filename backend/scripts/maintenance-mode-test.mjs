@@ -89,6 +89,19 @@ ok('student API 503 during maintenance', exams.status === 503 && exams.data.code
 const me = await anon('GET', '/api/auth/me')
 ok('auth/me reachable (401 unauth, not 503)', me.status === 401, `status=${me.status}`)
 
+// 5b. OWNER LOGIN DURING MAINTENANCE: /auth/login must stay reachable so the
+// admin can sign in via /admin-login while students are locked out. Student
+// tokens issued during maintenance still hit 503 on every student API.
+const maintRes = await fetch(base + '/api/auth/login', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ email: 'maint-admin@test.local', password: 'Testpass1!' })
+})
+const maintLogin = { status: maintRes.status, data: await maintRes.json().catch(() => ({})) }
+ok('auth/login reachable during maintenance (owner can sign in)', maintLogin.status === 200 && Boolean(maintLogin.data?.token || maintLogin.data?.data?.token), `status=${maintLogin.status}`)
+const maintTok = maintLogin.data?.token || maintLogin.data?.data?.token
+const maintExams = await call('GET', '/api/exams', null, { authorization: `Bearer ${maintTok}` })
+ok('fresh admin token bypasses gate on student APIs', maintExams.status === 200, `status=${maintExams.status}`)
+
 // 6. Health stays open
 const health = await anon('GET', '/api/health')
 ok('health reachable during maintenance', health.status === 200 && health.data.ok === true, `status=${health.status}`)

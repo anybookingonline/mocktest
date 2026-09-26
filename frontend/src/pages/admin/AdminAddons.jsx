@@ -18,7 +18,8 @@ const ADDON_FIELDS = [
   { id: 'analyticsPro', icon: '📊', name: 'Analytics Pro', note: 'Weak-area heatmap + rank estimate + parent report.', enabledKey: 'addons.analyticsProEnabled', monthlyKey: 'addons.analyticsProPriceMonthly', monthlyDefault: 19, yearlyKey: 'addons.analyticsProPriceYearly', yearlyDefault: 149 }
 ]
 
-export default function AdminAddons() {
+// Content-only version — reused inside the Business Hub tabs.
+export function AddonsPanel() {
   const toast = useToast()
   const [cfg, setCfg] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -35,10 +36,10 @@ export default function AdminAddons() {
     } catch (e) { toast(e.message, 'err') } finally { setSaving(false) }
   }
 
-  if (!cfg) return <AdminLayout title="Add-ons"><div className="spin" /></AdminLayout>
+  if (!cfg) return <div className="spin" />
 
   return (
-    <AdminLayout title="🧩 Add-ons">
+    <>
       <p className="small muted mb">
         Base plan (₹{cfg['monetization.price'] || 999}/year Data Retention) rahega minimal — sirf app access + rate limits.
         Baaki sab feature yahan se ON/OFF aur monthly/yearly price ke saath control hote hain. <b>OFF karne par wo feature Plans page se aur student-facing UI se — dono jagah se — hide ho jaata hai</b>, sirf pricing card se nahi.
@@ -69,6 +70,14 @@ export default function AdminAddons() {
       })}
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save add-on pricing'}</button>
+    </>
+  )
+}
+
+export default function AdminAddons() {
+  return (
+    <AdminLayout title="🧩 Add-ons">
+      <AddonsPanel />
     </AdminLayout>
   )
 }

@@ -17,6 +17,61 @@ const GATEWAY_FIELDS = {
   qr: [['qr.upiId', 'UPI ID (e.g. name@okhdfc)', 'text', ''], ['qr.holderName', 'Account / business name', 'text', ''], ['qr.qrImage', 'QR image (data URL from upload)', 'file'], ['qr.note', 'Payment note (e.g. "Send ₹499 and enter the UTR below")', 'text', '']]
 }
 
+// Content-only panels — reused inside the Business Hub tabs.
+export function PlanPricingPanel({ cfg, set, save }) {
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <b className="small mb" style={{ display: 'block' }}>Plan pricing</b>
+      <div className="row">
+        <label className="field" style={{ flex: 1 }}><span>Plan price</span>
+          <input type="number" className="input" value={cfg['monetization.price']} onChange={set('monetization.price')} />
+        </label>
+        <label className="field" style={{ flex: 1 }}><span>Currency</span>
+          <input className="input" value={cfg['monetization.currency']} placeholder="INR" onChange={set('monetization.currency')} />
+        </label>
+        <label className="field" style={{ flex: 1 }}><span>Retention days (paid)</span>
+          <input type="number" className="input" value={cfg['monetization.retentionDays']} onChange={set('monetization.retentionDays')} />
+        </label>
+        <label className="field" style={{ flex: 1 }}><span>Free hold (hours)</span>
+          <input type="number" className="input" value={cfg['monetization.freeHoldHours']} onChange={set('monetization.freeHoldHours')} />
+        </label>
+      </div>
+      <p className="tiny muted mb">Free users' data is automatically deleted after the free hold window. Paid users' data is kept for the retention period.</p>
+      <button className="btn btn-primary" onClick={save}>Save plan pricing</button>
+    </div>
+  )
+}
+
+export function GatewaysPanel({ cfg, set, gateways, toggleGateway, renderField, save, fileBuf, onFile }) {
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <b className="small mb" style={{ display: 'block' }}>Payment gateways — enable one or more</b>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        {GATEWAY_META.map((g) => (
+          <label key={g.id} className="chip" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: gateways.includes(g.id) ? 'var(--accent)' : '', color: gateways.includes(g.id) ? '#fff' : '' }}>
+            <input type="checkbox" checked={gateways.includes(g.id)} onChange={() => toggleGateway(g.id)} />
+            {g.label}
+          </label>
+        ))}
+      </div>
+      <p className="tiny muted mb">Tick the gateways you want students to pay with. Configure each gateway's keys below.</p>
+
+      {gateways.map((g) => (
+        <div key={g} className="card" style={{ margin: '10px 0', padding: 14 }}>
+          <b className="small mb" style={{ display: 'block' }}>
+            {GATEWAY_META.find((x) => x.id === g)?.label}
+            <span className="tiny muted"> — {GATEWAY_META.find((x) => x.id === g)?.desc}</span>
+          </b>
+          {GATEWAY_FIELDS[g]?.map(renderField)}
+        </div>
+      ))}
+
+      {gateways.length === 0 && <p className="tiny muted mb">No gateways enabled — students will not be able to purchase. Enable at least one.</p>}
+      <button className="btn btn-primary" onClick={save}>Save gateway settings</button>
+    </div>
+  )
+}
+
 export default function AdminSettings() {
   const toast = useToast()
   const [cfg, setCfg] = useState(null)

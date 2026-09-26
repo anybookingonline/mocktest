@@ -3,7 +3,8 @@ import { AdminLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, useToast } from '../../components/ui.jsx'
 
-export default function AdminPayments() {
+// Content-only version — reused inside the Business Hub tabs.
+export function PaymentsPanel() {
   const toast = useToast()
   const [data, setData] = useState(null)
   const [refunds, setRefunds] = useState(null)
@@ -47,7 +48,7 @@ export default function AdminPayments() {
   const fmt = (s) => s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
   return (
-    <AdminLayout title="Payments & Retention">
+    <>
       <div className="card mb" style={{ maxWidth: 560 }}>
         <b className="small mb" style={{ display: 'block' }}>Manual activation (offline billing)</b>
         <div className="row">
@@ -146,6 +147,14 @@ export default function AdminPayments() {
           </table>
         )}
       </div>
+    </>
+  )
+}
+
+export default function AdminPayments() {
+  return (
+    <AdminLayout title="Payments & Retention">
+      <PaymentsPanel />
     </AdminLayout>
   )
 }

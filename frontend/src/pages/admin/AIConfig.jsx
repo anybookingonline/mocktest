@@ -305,7 +305,7 @@ export default function AdminAI() {
         <hr className="divider" />
         <div className="row" style={{ alignItems: 'center', gap: 10 }}>
           <b className="small">Paid add-on pricing</b>
-          <Link to="/admin/addons" className="btn btn-ghost btn-sm">🧩 Manage in Add-ons →</Link>
+          <Link to="/admin/business?tab=addons" className="btn btn-ghost btn-sm">🧩 Manage in Business Hub →</Link>
         </div>
         <p className="tiny muted">On/off + monthly/yearly pricing for all 7 add-ons ab apne alag page par hai — Admin → Add-ons.</p>
         <hr className="divider" />
