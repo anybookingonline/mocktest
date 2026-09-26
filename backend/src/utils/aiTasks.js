@@ -171,6 +171,34 @@ export async function explainQuestionWithAI({ questionText, options, correctAnsw
   return res.data.trim()
 }
 
+function langRuleFor(language) {
+  return language === 'hi'
+    ? 'Write in natural Hindi (Devanagari), keeping standard technical terms bilingual like official Hindi exam papers.'
+    : language === 'hinglish'
+      ? 'Write in friendly Hinglish (Roman-script Hindi mixed with English).'
+      : 'Write in clear English.'
+}
+
+// AI Topic Summary: concept -> worked example -> memorisation tip, for a
+// student who wants to (re)learn a topic before practicing it. Goes through
+// aiChat's normal cache (same topic+exam = same summary, no repeat AI cost).
+export async function summarizeTopicWithAI({ topicName, chapterName, subjectName, exam, language = null }) {
+  const system = `You are an expert exam tutor. Write a concise but complete study summary for one topic — enough to refresh the concept before practice, not a full textbook chapter.\n\nLANGUAGE: ${langRuleFor(language)}`
+  const user = `Exam: ${exam?.name || 'general'}\nSubject: ${subjectName || ''}\nChapter: ${chapterName || ''}\nTopic: ${topicName}\n\nWrite exactly these three sections with these exact headers:\nCONCEPT: a clear 3-5 sentence explanation of the core idea.\nEXAMPLE: one fully worked example showing the method step by step.\nREMEMBER: one crisp memorisation tip or the most common mistake students make here.`
+  const res = await aiChat({ system, messages: [{ role: 'user', content: user }], json: false, action: 'topic_summary' })
+  return res.data.trim()
+}
+
+// Flashcards: bite-sized front/back recall cards for a topic, reusing the
+// existing Leitner spaced-revision box (routes/revision.js records "Got it" /
+// "Still learning" the same way a practice-question answer would).
+export async function generateFlashcardsWithAI({ topicName, chapterName, subjectName, exam, count = 8, language = null }) {
+  const system = `You create bite-sized flashcards for exam revision. Each card has a short FRONT (a question, term, or fill-in-the-blank prompt) and a concise BACK (the answer/definition, 1-3 sentences — no long explanations). Cover the key facts, formulas, and definitions a student must recall cold for this topic. Return ONLY valid JSON.\n\nLANGUAGE: ${langRuleFor(language)}`
+  const user = `Exam: ${exam?.name || 'general'}\nSubject: ${subjectName || ''}\nChapter: ${chapterName || ''}\nTopic: ${topicName}\n\nGenerate ${count} flashcards.\nOutput ONLY JSON: { "cards": [ { "front": "...", "back": "..." } ] }`
+  const res = await aiChat({ system, messages: [{ role: 'user', content: user }], json: true, action: 'flashcards' })
+  return Array.isArray(res.data?.cards) ? res.data.cards.slice(0, count) : []
+}
+
 // ---------------------------------------------------------------------------
 // PDF import pipeline: Gemini Vision understands the PDF -> DeepSeek structures.
 // ---------------------------------------------------------------------------

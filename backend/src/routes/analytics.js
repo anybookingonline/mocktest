@@ -1,12 +1,55 @@
 import express from 'express'
+import crypto from 'crypto'
 import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
 import { pointsSummary, pointsLeaderboard } from '../utils/points.js'
 
 const router = express.Router()
-router.use(authRequired)
 
 function parseJ(str, f = []) { try { return JSON.parse(str || '[]') } catch { return f } }
+
+// GET /api/analytics/report/shared/:token - PUBLIC (no login) read-only
+// Parent Report view. Registered before router.use(authRequired) below so it
+// never requires a token. Only ever exposes progress stats — no email/phone.
+router.get('/report/shared/:token', async (req, res) => {
+  const share = await db.prepare('SELECT * FROM report_shares WHERE token = ?').get(String(req.params.token))
+  if (!share) return res.status(404).json({ error: 'This report link is invalid or has been revoked.' })
+  const user = await db.prepare('SELECT id, name, target_exam FROM users WHERE id = ?').get(share.user_id)
+  if (!user) return res.status(404).json({ error: 'Report not found' })
+
+  const completed = await db.prepare(`SELECT * FROM attempts WHERE user_id = ? AND status='completed' ORDER BY started_at DESC`).all(user.id)
+  const totalTests = completed.length
+  const avgAccuracy = totalTests ? Math.round((completed.reduce((a, x) => a + x.accuracy, 0) / totalTests) * 10) / 10 : 0
+  const totalTime = completed.reduce((a, x) => a + x.duration_seconds, 0)
+  const topicRows = await db.prepare(`SELECT ts.attempts, ts.correct, t.name topic_name, c.name chapter_name, s.name subject_name
+    FROM topic_stats ts LEFT JOIN topics t ON t.id = ts.topic_id LEFT JOIN chapters c ON c.id = t.chapter_id LEFT JOIN subjects s ON s.id = c.subject_id
+    WHERE ts.user_id = ? AND ts.attempts >= 2 ORDER BY (ts.correct * 1.0 / ts.attempts) ASC LIMIT 5`).all(user.id)
+  res.json({
+    name: user.name, targetExam: user.target_exam,
+    totalTests, avgAccuracy, totalTime,
+    recent: completed.slice(0, 10).map((a) => ({ title: a.title, score: a.score, accuracy: a.accuracy, started_at: a.started_at })),
+    weakTopics: topicRows
+  })
+})
+
+router.use(authRequired)
+
+// POST /api/analytics/report/share - get-or-create this student's parent-report link
+router.post('/report/share', async (req, res) => {
+  const token = crypto.randomBytes(16).toString('hex')
+  // ON CONFLICT DO NOTHING + re-select: a double-click racing two inserts
+  // never hits the user_id UNIQUE constraint as an unhandled error.
+  await db.prepare('INSERT INTO report_shares (user_id, token) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING').run(req.user.id, token)
+  const row = await db.prepare('SELECT token FROM report_shares WHERE user_id = ?').get(req.user.id)
+  res.json({ token: row.token })
+})
+
+// POST /api/analytics/report/share/revoke - kill the current link (a new
+// /share call afterwards issues a fresh, different token)
+router.post('/report/share/revoke', async (req, res) => {
+  await db.prepare('DELETE FROM report_shares WHERE user_id = ?').run(req.user.id)
+  res.json({ ok: true })
+})
 
 // GET /api/analytics/overview - student dashboard stats
 router.get('/overview', async (req, res) => {
@@ -147,6 +190,45 @@ router.get('/air', async (req, res) => {
     bestScore: rows[myIdx].best_score, avgAccuracy: rows[myIdx].avg_accuracy, tests: Number(rows[myIdx].tests)
   } : null
   res.json({ board, me, total })
+})
+
+// GET /api/analytics/predict?examId= — a percentile-range ESTIMATE, not a
+// claimed official exam rank. Deliberately framed as a range + explicit
+// disclaimer (not a single confident number) — an accuracy-based guess isn't
+// calibrated against real exam outcomes, and presenting it as a firm
+// prediction would be misleading. Widens the range when the in-app sample
+// for this exam is small (less confidence with fewer data points).
+router.get('/predict', async (req, res) => {
+  const examId = Number(req.query.examId)
+  if (!examId) return res.status(400).json({ error: 'examId required' })
+  const uid = req.user.id
+  const attempts = await db.prepare(`SELECT * FROM attempts WHERE user_id = ? AND exam_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 10`).all(uid, examId)
+  if (attempts.length < 3) {
+    return res.json({ enough: false, message: 'Kam se kam 3 completed tests chahiye is exam ke liye ek estimate dikhane ke liye.' })
+  }
+
+  const avg = (arr) => arr.length ? arr.reduce((a, x) => a + Number(x.accuracy || 0), 0) / arr.length : null
+  const recentAcc = avg(attempts.slice(0, 5))
+  const olderAcc = avg(attempts.slice(5, 10))
+  const delta = olderAcc != null ? recentAcc - olderAcc : 0
+
+  // Same in-app percentile universe as /air (everyone who's attempted this exam).
+  const rows = await db.prepare(`SELECT u.id user_id, MAX(a.score) best_score, AVG(a.accuracy) avg_accuracy
+    FROM attempts a JOIN users u ON u.id = a.user_id WHERE a.exam_id = ? AND a.status = 'completed' GROUP BY u.id`).all(examId)
+  rows.sort((a, b) => Number(b.best_score) - Number(a.best_score) || Number(b.avg_accuracy) - Number(a.avg_accuracy))
+  const total = rows.length
+  const myIdx = rows.findIndex((r) => Number(r.user_id) === uid)
+  const percentile = total > 1 && myIdx >= 0 ? Math.max(1, Math.round(((total - myIdx) / total) * 100)) : null
+
+  const band = total < 20 ? 20 : total < 100 ? 12 : 6
+  res.json({
+    enough: true,
+    percentileRange: percentile != null ? [Math.max(1, percentile - band), Math.min(99, percentile + band)] : null,
+    trend: delta > 3 ? 'improving' : delta < -3 ? 'declining' : 'steady',
+    recentAccuracy: recentAcc != null ? Math.round(recentAcc * 10) / 10 : null,
+    sampleSize: total,
+    disclaimer: 'Yeh sirf Aisepadho par tumhare accuracy, speed aur trend se ek rough ESTIMATE hai — koi official exam rank ka prediction nahi hai. Jitne zyada tests doge, utna reliable hoga.'
+  })
 })
 
 // GET /api/analytics/report - full detailed report for a user

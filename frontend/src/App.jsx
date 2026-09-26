@@ -8,6 +8,7 @@ import CookieConsent from './components/CookieConsent.jsx'
 import Landing from './pages/Landing.jsx'
 import Schools from './pages/Schools.jsx'
 import Legal from './pages/Legal.jsx'
+import ParentReport from './pages/ParentReport.jsx'
 import MaintenancePage from './components/MaintenancePage.jsx'
 import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages.jsx'
 import Dashboard from './pages/student/Dashboard.jsx'
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/terms-of-use" element={<Legal doc="terms" />} />
         <Route path="/refund-policy" element={<Legal doc="refund" />} />
         <Route path="/cookie-policy" element={<Legal doc="cookies" />} />
+        <Route path="/report/:token" element={<ParentReport />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

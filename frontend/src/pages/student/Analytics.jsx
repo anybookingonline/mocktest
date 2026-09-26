@@ -2,14 +2,20 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StudentLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
-import { Badge, Progress, Skeleton, fmtDuration, statColor } from '../../components/ui.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
+import { Badge, Progress, Skeleton, fmtDuration, statColor, useToast } from '../../components/ui.jsx'
 
 export default function Analytics() {
   const nav = useNavigate()
+  const toast = useToast()
+  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [report, setReport] = useState(null)
   const [recs, setRecs] = useState([])
   const [heatmap, setHeatmap] = useState(null)
+  const [predict, setPredict] = useState(null)
+  const [shareUrl, setShareUrl] = useState(null)
+  const [shareBusy, setShareBusy] = useState(false)
   const [tab, setTab] = useState('weak')
 
   useEffect(() => {
@@ -20,12 +26,39 @@ export default function Analytics() {
 
   useEffect(() => {
     if (tab === 'heatmap' && !heatmap) api.get('/analytics/heatmap').then(setHeatmap).catch(() => {})
+    if (tab === 'predict' && !predict && user?.exam_id) api.get(`/analytics/predict?examId=${user.exam_id}`).then(setPredict).catch(() => {})
   }, [tab])
+
+  const shareReport = async () => {
+    setShareBusy(true)
+    try {
+      const d = await api.post('/analytics/report/share', {})
+      const url = `${window.location.origin}/report/${d.token}`
+      setShareUrl(url)
+      try { await navigator.clipboard.writeText(url); toast('Link copied — parents ko bhej do!', 'ok') } catch { toast('Link ready — neeche se copy karo', 'ok') }
+    } catch (e) { toast(e.message, 'err') } finally { setShareBusy(false) }
+  }
+
+  const revokeShare = async () => {
+    try { await api.post('/analytics/report/share/revoke', {}); setShareUrl(null); toast('Purana link band ho gaya', 'ok') } catch (e) { toast(e.message, 'err') }
+  }
 
   return (
     <StudentLayout title="Performance Analytics">
+      <div className="card mb spread">
+        <div>
+          <b className="small">👪 Parent Report</b>
+          <p className="tiny muted">Ek read-only link banao jo parents/guardian bina login ke dekh sakte hain.</p>
+          {shareUrl && <input className="input tiny mt" readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ maxWidth: 320 }} />}
+        </div>
+        <div className="row">
+          <button className="btn btn-primary btn-sm" onClick={shareReport} disabled={shareBusy}>{shareBusy ? '…' : shareUrl ? '🔗 Copy again' : '🔗 Get share link'}</button>
+          {shareUrl && <button className="btn btn-ghost btn-sm" onClick={revokeShare}>Revoke</button>}
+        </div>
+      </div>
+
       <div className="row mb">
-        {[['weak', 'Weak Topic Analysis'], ['heatmap', 'Heatmap'], ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis']].map(([k, label]) => (
+        {[['weak', 'Weak Topic Analysis'], ['heatmap', 'Heatmap'], ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis'], ['predict', 'Rank Estimate']].map(([k, label]) => (
           <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -149,6 +182,32 @@ export default function Analytics() {
             </div>
           ))}
           {report?.speedTrend?.length === 0 && <div className="empty">No speed data yet.</div>}
+        </div>
+      )}
+
+      {tab === 'predict' && (
+        <div className="card">
+          <b className="small mb" style={{ display: 'block' }}>Rank estimate</b>
+          {!user?.exam_id && <div className="empty">Profile me apna target exam select karo pehle.</div>}
+          {user?.exam_id && !predict && <Skeleton h={120} />}
+          {predict && !predict.enough && <div className="empty">{predict.message}</div>}
+          {predict?.enough && (
+            <>
+              {predict.percentileRange ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 34, fontWeight: 800 }}>{predict.percentileRange[0]}–{predict.percentileRange[1]}th percentile</div>
+                  <p className="tiny muted">among {predict.sampleSize} Aisepadho students on this exam</p>
+                </div>
+              ) : <p className="small muted">Abhi enough students nahi hain is exam par ek percentile estimate ke liye.</p>}
+              <div className="row mt" style={{ justifyContent: 'center', gap: 10 }}>
+                <span className="chip">Recent accuracy: {predict.recentAccuracy}%</span>
+                <Badge kind={predict.trend === 'improving' ? 'green' : predict.trend === 'declining' ? 'red' : 'amber'}>
+                  {predict.trend === 'improving' ? '📈 Improving' : predict.trend === 'declining' ? '📉 Declining' : '➡️ Steady'}
+                </Badge>
+              </div>
+              <p className="tiny muted mt" style={{ textAlign: 'center' }}>⚠️ {predict.disclaimer}</p>
+            </>
+          )}
         </div>
       )}
     </StudentLayout>

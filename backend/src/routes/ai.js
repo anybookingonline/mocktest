@@ -3,7 +3,7 @@ import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
-import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
+import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions, summarizeTopicWithAI } from '../utils/aiTasks.js'
 import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS, visionSolvePhoto } from '../utils/aiService.js'
 import { getEntitlements, doubtCapFor } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
@@ -235,6 +235,26 @@ router.post('/explain', aiLimiter(), async (req, res) => {
     })
     await db.prepare('UPDATE questions SET explanation = ? WHERE id = ?').run(explanation, q.id)
     res.json({ explanation })
+  } catch (e) {
+    res.status(502).json({ error: 'AI request failed: ' + e.message })
+  }
+})
+
+// GET /api/ai/topic-summary/:topicId - concept + example + memorisation tip
+router.get('/topic-summary/:topicId', aiLimiter(), async (req, res) => {
+  const row = await db.prepare(`
+    SELECT t.id, t.name AS topic_name, c.name AS chapter_name, s.name AS subject_name, s.exam_id
+    FROM topics t JOIN chapters c ON c.id = t.chapter_id JOIN subjects s ON s.id = c.subject_id
+    WHERE t.id = ?
+  `).get(Number(req.params.topicId))
+  if (!row) return res.status(404).json({ error: 'Topic not found' })
+  try {
+    const exam = row.exam_id ? await db.prepare('SELECT * FROM exams WHERE id = ?').get(row.exam_id) : null
+    const summary = await summarizeTopicWithAI({
+      topicName: row.topic_name, chapterName: row.chapter_name, subjectName: row.subject_name, exam,
+      language: req.query.language || null
+    })
+    res.json({ summary, topic: row.topic_name, chapter: row.chapter_name, subject: row.subject_name })
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
   }

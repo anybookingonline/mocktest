@@ -39,7 +39,7 @@ const TABLES_WITH_ID = new Set([
   'users', 'exams', 'subjects', 'chapters', 'topics', 'questions', 'tests',
   'attempts', 'doubts', 'pdf_imports', 'pdf_batches', 'ai_logs', 'notifications', 'telegram_links',
   'institutes', 'institute_invites', 'group_orders', 'group_messages',
-  'battle_rooms', 'battle_rounds', 'points_log'
+  'battle_rooms', 'battle_rounds', 'points_log', 'report_shares'
   // NOTE: composite-PK tables (group_members, battle_answers, focus_areas_cache,
   // revision_state) intentionally NOT listed — they have no `id` column, so
   // RETURNING id must not be added to their upserts.
@@ -557,6 +557,18 @@ CREATE TABLE IF NOT EXISTS pdf_batches (
 ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES pdf_batches(id) ON DELETE SET NULL;
 ALTER TABLE pdf_imports ADD COLUMN IF NOT EXISTS batch_key TEXT;
 CREATE INDEX IF NOT EXISTS idx_pdf_imports_batch ON pdf_imports(batch_id);
+
+-- Parent Report: a student can generate a public, read-only share link to
+-- their own progress report (no login needed to view — parents/guardians
+-- open it directly). One active token per user; revoking deletes the row so
+-- the old link stops working, and a fresh share creates a new token.
+CREATE TABLE IF NOT EXISTS report_shares (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_report_shares_token ON report_shares(token);
 
 -- ---------------------------------------------------------------------------
 -- Email (transactional — Resend). Soft verification + password-reset tokens.

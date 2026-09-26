@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import { authRequired, adminOnly } from '../middleware/auth.js'
-import { dueRevision, startRevisionMock, generateDoubtMock, runRevisionCron } from '../utils/revision.js'
-import { solveDoubtWithAI } from '../utils/aiTasks.js'
+import { dueRevision, startRevisionMock, generateDoubtMock, runRevisionCron, recordTopicOutcome } from '../utils/revision.js'
+import { solveDoubtWithAI, generateFlashcardsWithAI } from '../utils/aiTasks.js'
+import { aiLimiter } from '../middleware/rateLimit.js'
 import db from '../db.js'
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,34 @@ router.post('/doubt-mock', async (req, res) => {
   const out = await generateDoubtMock({ doubtId, userId: req.user.id })
   if (out.error) return res.status(400).json({ error: out.error })
   res.status(201).json(out)
+})
+
+// GET /api/revision/flashcards/:topicId — AI-generated recall cards for a topic
+router.get('/flashcards/:topicId', aiLimiter(), async (req, res) => {
+  const row = await db.prepare(`
+    SELECT t.id, t.name AS topic_name, c.name AS chapter_name, s.name AS subject_name, s.exam_id
+    FROM topics t JOIN chapters c ON c.id = t.chapter_id JOIN subjects s ON s.id = c.subject_id
+    WHERE t.id = ?
+  `).get(Number(req.params.topicId))
+  if (!row) return res.status(404).json({ error: 'Topic not found' })
+  try {
+    const exam = row.exam_id ? await db.prepare('SELECT * FROM exams WHERE id = ?').get(row.exam_id) : null
+    const cards = await generateFlashcardsWithAI({ topicName: row.topic_name, chapterName: row.chapter_name, subjectName: row.subject_name, exam })
+    if (!cards.length) return res.status(502).json({ error: 'AI could not generate flashcards for this topic. Try again.' })
+    res.json({ cards, topic: row.topic_name })
+  } catch (e) {
+    res.status(502).json({ error: 'AI request failed: ' + e.message })
+  }
+})
+
+// POST /api/revision/flashcard-result — "Got it" / "Still learning" feeds the
+// SAME Leitner box the test-based revision engine uses, so flashcard review
+// and test practice both move a topic through the same forgetting-curve state.
+router.post('/flashcard-result', async (req, res) => {
+  const topicId = Number(req.body?.topicId)
+  if (!topicId) return res.status(400).json({ error: 'topicId required' })
+  await recordTopicOutcome(req.user.id, topicId, Boolean(req.body?.gotIt))
+  res.json({ ok: true })
 })
 
 // POST /api/revision/admin/run-cron (admin manual trigger)
