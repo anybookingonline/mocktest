@@ -100,6 +100,10 @@ const strings = {
     'pu.ca.d': 'Daily 10 AI MCQs from real news — exam-scoped, based on today’s headlines.',
     'pu.focus.t': 'AI Focus Areas',
     'pu.focus.d': 'Scans past years’ papers — master the most-repeated topics first.',
+    'pu.revision.t': 'Smart Revision Pack',
+    'pu.revision.d': 'AI-generated spaced-revision mocks, flashcards per topic, and instant concept summaries.',
+    'pu.analytics.t': 'Analytics Pro',
+    'pu.analytics.d': 'Visual weak-area heatmap, percentile rank estimate, and a shareable parent progress report.',
 
     // — Landing: social proof + B2B —
     'sp.points.t': 'Points & Levels',
@@ -283,6 +287,10 @@ const strings = {
     'pu.ca.d': 'Daily 10 AI MCQs real news se — exam-scoped, aaj ke headlines par based.',
     'pu.focus.t': 'AI Focus Areas',
     'pu.focus.d': 'Pichhle saalon ke papers scan — kaunsa topic baar-baar aata hai, wahi pehle master karo.',
+    'pu.revision.t': 'Smart Revision Pack',
+    'pu.revision.d': 'AI-generated spaced-revision mocks, har topic ke flashcards, aur turant concept summaries.',
+    'pu.analytics.t': 'Analytics Pro',
+    'pu.analytics.d': 'Visual weak-area heatmap, percentile rank estimate, aur ek shareable parent progress report.',
 
     // — Landing: social proof + B2B —
     'sp.points.t': 'Points & Levels',
@@ -466,6 +474,10 @@ const strings = {
     'pu.ca.d': 'रोज़ 10 AI MCQ असली खबरों से — परीक्षा-अनुकूलित, आज की सुर्खियों पर आधारित।',
     'pu.focus.t': 'AI फ़ोकस एरिया',
     'pu.focus.d': 'पिछले वर्षों के पेपर स्कैन — जो टॉपिक सबसे ज़्यादा दोहराया गया, उसी से शुरुआत।',
+    'pu.revision.t': 'स्मार्ट रिवीज़न पैक',
+    'pu.revision.d': 'AI-जनरेटेड स्पेस्ड-रिवीज़न मॉक्स, हर टॉपिक के फ़्लैशकार्ड्स, और तुरंत कॉन्सेप्ट समरी।',
+    'pu.analytics.t': 'एनालिटिक्स प्रो',
+    'pu.analytics.d': 'विज़ुअल वीक-एरिया हीटमैप, पर्सेंटाइल रैंक एस्टिमेट, और एक शेयर करने लायक पेरेंट प्रोग्रेस रिपोर्ट।',
 
     // — Landing: social proof + B2B —
     'sp.points.t': 'अंक और लेवल',

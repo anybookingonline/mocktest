@@ -49,7 +49,9 @@ const POWERUPS = [
   { icon: '⚡', titleKey: 'pu.power.t', textKey: 'pu.power.d' },
   { icon: '🎙️', titleKey: 'pu.voice.t', textKey: 'pu.voice.d' },
   { icon: '📰', titleKey: 'pu.ca.t', textKey: 'pu.ca.d' },
-  { icon: '🔥', titleKey: 'pu.focus.t', textKey: 'pu.focus.d' }
+  { icon: '🔥', titleKey: 'pu.focus.t', textKey: 'pu.focus.d' },
+  { icon: '🔁', titleKey: 'pu.revision.t', textKey: 'pu.revision.d', tag: 'NEW' },
+  { icon: '📊', titleKey: 'pu.analytics.t', textKey: 'pu.analytics.d', tag: 'NEW' }
 ]
 
 // Home FAQ — rendered visibly below and mirrored as FAQPage JSON-LD so the
@@ -168,7 +170,10 @@ export default function Landing() {
         <div className="grid grid-4 mb">
           {POWERUPS.map((p) => (
             <div key={p.titleKey} className="card">
-              <div style={{ fontSize: 24 }}>{p.icon}</div>
+              <div className="spread" style={{ alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 24 }}>{p.icon}</div>
+                {p.tag && <span className="badge purple">{p.tag}</span>}
+              </div>
               <b className="small" style={{ display: 'block', marginTop: 6 }}>{t(p.titleKey)}</b>
               <p className="tiny muted" style={{ marginTop: 6 }}>{t(p.textKey)}</p>
             </div>
