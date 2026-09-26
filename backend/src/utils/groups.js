@@ -87,6 +87,16 @@ export async function isUserPaid(userId) {
   return Boolean(e.retention || e.aiPower || e.voiceDoubts)
 }
 
+// Shared by the chat POST route and the group-analytics route — a member has
+// chat/analytics access if they're on any paid plan/addon, OR they're one of
+// the free seats the group's own deal unlocked (member_paid=0 but the
+// group_discussions addon row got granted to them by recomputeGroupEntitlements).
+export async function hasChatAccess(userId) {
+  const { getEntitlements } = await import('./addons.js')
+  const e = await getEntitlements(userId)
+  return Boolean(e.retention || e.aiPower || e.addons.some((a) => a.id === 'group_discussions'))
+}
+
 function makeCode() {
   // Unambiguous alphabet (no I/L/O/0/1)
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -200,6 +210,10 @@ export async function groupDetail({ groupId, userId }) {
     ? (await db.prepare(`SELECT m.id, m.body, m.created_at, m.user_id, u.name user_name
         FROM group_messages m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.id DESC LIMIT 60`).all(groupId)).reverse()
     : []
+  // Per-USER access (not just "is the feature globally on") — a free member
+  // sees the same chat (so they know it exists) but read-only/locked, until
+  // they're paid or the group's free-seat deal unlocks them.
+  const myChatAccess = await hasChatAccess(userId)
   return {
     group: { id: g.id, name: g.name, kind: g.kind, examId: g.exam_id, joinCode: g.join_code, isOwner: me.role === 'owner', createdAt: g.created_at },
     ownerName: g.owner_name,
@@ -207,8 +221,47 @@ export async function groupDetail({ groupId, userId }) {
     paidCount,
     freeUnlocked,
     discussionsEnabled: cfg.discussionsEnabled,
+    myChatAccess,
     deal: { freeAfterPaid: cfg.freeAfterPaid, freeSlots: cfg.freeSlots, maxMembers: cfg.maxMembers, maxFree: cfg.maxFree },
     messages
+  }
+}
+
+// Group Analytics — aggregate stats across all members, visible only to
+// members with chat access (paid or a free-seat deal), per the "tease the
+// feature, gate the value" positioning: free members see the CARD exists
+// (locked) but not the numbers.
+export async function groupAnalytics(groupId) {
+  const memberIds = (await db.prepare('SELECT user_id FROM group_members WHERE group_id = ?').all(groupId)).map((m) => m.user_id)
+  if (!memberIds.length) return { members: 0, totalTests: 0, avgAccuracy: 0, mostActive: null, weakTopics: [] }
+  const marks = memberIds.map(() => '?').join(',')
+  const attempts = await db.prepare(`SELECT user_id, accuracy FROM attempts WHERE user_id IN (${marks}) AND status = 'completed'`).all(...memberIds)
+  const totalTests = attempts.length
+  const avgAccuracy = totalTests ? Math.round((attempts.reduce((a, x) => a + Number(x.accuracy || 0), 0) / totalTests) * 10) / 10 : 0
+
+  const byUser = {}
+  for (const a of attempts) byUser[a.user_id] = (byUser[a.user_id] || 0) + 1
+  const topUserId = Object.entries(byUser).sort((a, b) => b[1] - a[1])[0]
+  let mostActive = null
+  if (topUserId) {
+    const u = await db.prepare('SELECT name FROM users WHERE id = ?').get(Number(topUserId[0]))
+    mostActive = { name: u?.name || 'Member', tests: topUserId[1] }
+  }
+
+  const topicRows = await db.prepare(`
+    SELECT ts.topic_id, SUM(ts.attempts) attempts, SUM(ts.correct) correct, t.name topic_name
+    FROM topic_stats ts JOIN topics t ON t.id = ts.topic_id
+    WHERE ts.user_id IN (${marks})
+    GROUP BY ts.topic_id, t.name HAVING SUM(ts.attempts) >= 3
+    ORDER BY (SUM(ts.correct) * 1.0 / SUM(ts.attempts)) ASC LIMIT 5
+  `).all(...memberIds)
+
+  return {
+    members: memberIds.length,
+    totalTests,
+    avgAccuracy,
+    mostActive,
+    weakTopics: topicRows.map((t) => ({ name: t.topic_name, accuracy: Math.round((Number(t.correct) / Number(t.attempts)) * 100) }))
   }
 }
 

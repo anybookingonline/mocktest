@@ -2,7 +2,8 @@ import { Router } from 'express'
 import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { getGroupConfig, listMyGroups, createGroup, joinGroup, leaveGroup,
-  isGroupMember, groupDetail, messagesSince, postGroupMessage, recomputeGroupEntitlements, canCreateGroup } from '../utils/groups.js'
+  isGroupMember, groupDetail, messagesSince, postGroupMessage, recomputeGroupEntitlements, canCreateGroup,
+  hasChatAccess, groupAnalytics } from '../utils/groups.js'
 import { awardPoints } from '../utils/points.js'
 
 // ---------------------------------------------------------------------------
@@ -86,15 +87,26 @@ router.post('/:id/messages', requireFlag, async (req, res) => {
   if (!cfg.discussionsEnabled) return res.status(403).json({ error: 'Group Discussions is currently disabled.' })
   const groupId = Number(req.params.id)
   if (!(await isGroupMember(groupId, req.user.id))) return res.status(403).json({ error: 'Not a member' })
-  const ent = await import('../utils/addons.js').then((m) => m.getEntitlements(req.user.id))
-  const hasChatAccess = ent.retention || ent.aiPower || ent.addons.some((a) => a.id === 'group_discussions')
-  if (!hasChatAccess) {
-    return res.status(402).json({ error: 'Discussion chat needs the Discussions add-on, a paid plan, or a free group seat.', upgrade: true })
+  if (!(await hasChatAccess(req.user.id))) {
+    return res.status(402).json({ error: 'Discussion chat needs a paid plan/add-on, or a free group seat.', upgrade: true })
   }
   const out = await postGroupMessage({ groupId, userId: req.user.id, body: req.body?.body })
   if (out.error) return res.status(400).json({ error: out.error })
   await awardPoints(req.user.id, 'group_message')
   res.status(201).json({ id: out.id })
+})
+
+// GET /api/groups/:id/analytics — aggregate group stats. Same access rule as
+// chat: paid plan/addon, or a free-seat member. Free (no-seat) members get a
+// 402 so the frontend can show a locked card instead of the numbers — the
+// feature is discoverable, the value is gated.
+router.get('/:id/analytics', requireFlag, async (req, res) => {
+  const groupId = Number(req.params.id)
+  if (!(await isGroupMember(groupId, req.user.id))) return res.status(403).json({ error: 'Not a member' })
+  if (!(await hasChatAccess(req.user.id))) {
+    return res.status(402).json({ error: 'Group Analytics ek paid plan/add-on, ya free group seat se milta hai.', upgrade: true })
+  }
+  res.json(await groupAnalytics(groupId))
 })
 
 // POST /api/groups/:id/leave

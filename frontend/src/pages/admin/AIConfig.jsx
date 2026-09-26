@@ -223,12 +223,15 @@ export default function AdminAI() {
             <hr className="divider" />
             <b className="small mb" style={{ display: 'block' }}>🎁 Free-seat deal builder — "kitne paid → kitne free"</b>
             <p className="tiny muted mb">Jo rule yahan set karoge wahi har group par apply hoga. Koi code/JSON nahi — ready-made deals choose karo ya numbers badlo. Save configuration dabana mat bhoolna.</p>
+            <p className="tiny muted mb">"1 paid ke saath apne dosto ko bulao" presets — 1 paying member bulaye utne hi free friends group study/chat me:</p>
             <div className="row mb" style={{ gap: 8, flexWrap: 'wrap' }}>
               {[
                 { label: '2 paid → 1 free (default)', n: 2, m: 1 },
-                { label: '🚀 Launch: 1 paid → 1 free', n: 1, m: 1 },
-                { label: '"4 ka group, 1 free"', n: 3, m: 1 },
-                { label: '3 paid → 2 free', n: 3, m: 2 },
+                { label: '1 paid → 1 free', n: 1, m: 1 },
+                { label: '1 paid → 2 free', n: 1, m: 2 },
+                { label: '1 paid → 3 free', n: 1, m: 3 },
+                { label: '1 paid → 4 free', n: 1, m: 4 },
+                { label: '1 paid → 5 free', n: 1, m: 5 },
                 { label: 'Sirf paid (0 free)', n: 2, m: 0 }
               ].map((p) => (
                 <button key={p.label} type="button" className="btn btn-ghost btn-sm"
@@ -236,7 +239,13 @@ export default function AdminAI() {
                     borderColor: 'rgba(99,102,241,0.4)',
                     background: (Number(cfg['groups.freeAfterPaid']) || 2) === p.n && (Number(cfg['groups.freeSlots']) || 0) === p.m ? 'rgba(99,102,241,0.18)' : 'transparent'
                   }}
-                  onClick={() => { set('groups.freeAfterPaid', String(p.n)); set('groups.freeSlots', String(p.m)) }}>
+                  onClick={() => {
+                    set('groups.freeAfterPaid', String(p.n))
+                    set('groups.freeSlots', String(p.m))
+                    // maxFree is a hard cap on top of freeSlots — bump it so a
+                    // "1 paid → 5 free" pick isn't silently capped at 3.
+                    set('groups.maxFree', String(Math.max(p.m, Number(cfg['groups.maxFree']) || 3)))
+                  }}>
                   {p.label}
                 </button>
               ))}

@@ -25,11 +25,15 @@ export default function Groups() {
   }
   useEffect(() => { load() }, [])
 
+  const [analytics, setAnalytics] = useState(null)
+
   const openGroup = async (id) => {
     try {
       const d = await api.get(`/groups/${id}`)
       setOpen(d)
+      setAnalytics(null)
       afterId.current = d.messages?.length ? d.messages[d.messages.length - 1].id : 0
+      if (d.myChatAccess) api.get(`/groups/${id}/analytics`).then(setAnalytics).catch(() => {})
     } catch (e) { toast(e.message, 'err') }
   }
 
@@ -208,12 +212,21 @@ export default function Groups() {
                   </div>
                 ))}
               </div>
-              <div className="row mt">
-                <input className="input" style={{ flex: 1 }} placeholder="Message likho…" value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
-                <button className="btn btn-primary" onClick={send} disabled={!draft.trim()}>Send</button>
-              </div>
+              {/* You can always READ the chat (so the feature is visible/discoverable) —
+                  sending is locked until you're paid or the group's free-seat deal unlocks you. */}
+              {open.myChatAccess ? (
+                <div className="row mt">
+                  <input className="input" style={{ flex: 1 }} placeholder="Message likho…" value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
+                  <button className="btn btn-primary" onClick={send} disabled={!draft.trim()}>Send</button>
+                </div>
+              ) : (
+                <div className="row mt" style={{ background: 'var(--bg2)', padding: '10px 14px', borderRadius: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span className="small">🔒 Sending is locked — {open.paidCount}/{open.deal.freeAfterPaid} paying members so far, {open.deal.freeSlots} free seat{open.deal.freeSlots > 1 ? 's' : ''} unlock automatically when the deal completes.</span>
+                  <Link to={`/retention?buyGroup=${open.group.id}`} className="btn btn-accent btn-sm" style={{ flexShrink: 0 }}>Unlock →</Link>
+                </div>
+              )}
             </div>
           ) : (
             <div className="card">
@@ -233,6 +246,35 @@ export default function Groups() {
               <p className="tiny muted mt">
                 Group chat {open.deal.freeAfterPaid} paying members hone par unlock hota hai (free seat policy). Abhi tak: {open.paidCount}/{open.deal.freeAfterPaid}.
               </p>
+            </div>
+          )}
+
+          {/* Group Analytics — visible to everyone (so free members know it exists),
+              but only paid/free-seat members get the actual numbers. */}
+          {open.myChatAccess ? (
+            <div className="card mt">
+              <b className="small">📊 Group Analytics</b>
+              {!analytics ? <p className="tiny muted mt">Loading…</p> : (
+                <div className="grid grid-3 mt" style={{ textAlign: 'center' }}>
+                  <div><div style={{ fontSize: 22, fontWeight: 800 }}>{analytics.totalTests}</div><p className="tiny muted">tests (group)</p></div>
+                  <div><div style={{ fontSize: 22, fontWeight: 800 }}>{analytics.avgAccuracy}%</div><p className="tiny muted">avg accuracy</p></div>
+                  <div><div style={{ fontSize: 22, fontWeight: 800 }}>{analytics.mostActive?.name || '—'}</div><p className="tiny muted">most active{analytics.mostActive ? ` (${analytics.mostActive.tests})` : ''}</p></div>
+                </div>
+              )}
+              {analytics?.weakTopics?.length > 0 && (
+                <div className="mt">
+                  <p className="tiny muted mb">Group ke weak topics:</p>
+                  <ul className="tiny" style={{ paddingLeft: 18, lineHeight: 1.8 }}>
+                    {analytics.weakTopics.map((t, i) => <li key={i}>{t.name} — {t.accuracy}%</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="card mt" style={{ opacity: 0.75 }}>
+              <b className="small">📊 Group Analytics 🔒</b>
+              <p className="tiny muted mt">Average accuracy, most active member, group ke weak topics — paid seat/plan unlock karne par dikhega.</p>
+              <Link to={`/retention?buyGroup=${open.group.id}`} className="btn btn-ghost btn-sm mt">Unlock →</Link>
             </div>
           )}
         </>
