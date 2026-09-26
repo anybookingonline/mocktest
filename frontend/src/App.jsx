@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { ToastProvider } from './components/ui.jsx'
 import { Splash } from './pages/auth/AuthPages.jsx'
@@ -44,6 +44,7 @@ import AdminCoupons from './pages/admin/Coupons.jsx'
 import AdminMarketing from './pages/admin/Marketing.jsx'
 import AdminInstitutes from './pages/admin/Institutes.jsx'
 import InstituteDashboard from './pages/admin/InstituteDashboard.jsx'
+import AdminVisitors from './pages/admin/Visitors.jsx'
 
 function Protected({ children, admin = false }) {
   const { user, loading } = useAuth()
@@ -86,10 +87,42 @@ function Root() {
   return user.role === 'admin' ? <Navigate to="/admin" replace /> : <Dashboard />
 }
 
+// First-party visitor beacon: pings /api/analytics/track on every route
+// change. Cookie-free — a random visitor id lives in localStorage and a
+// session id in sessionStorage; the server dedupes 30 min per session+path,
+// so refresh storms never inflate counts. Admin pages are skipped: the
+// owner's own traffic shouldn't pollute marketing analytics.
+function VisitorBeacon() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    try {
+      if (pathname.startsWith('/admin')) return
+      let vid = localStorage.getItem('examai_vid')
+      if (!vid) {
+        vid = (crypto?.randomUUID ? crypto.randomUUID() : 'v-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
+        localStorage.setItem('examai_vid', vid)
+      }
+      let sid = sessionStorage.getItem('examai_sid')
+      if (!sid) {
+        sid = 's-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+        sessionStorage.setItem('examai_sid', sid)
+      }
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ visitorId: vid, sessionId: sid, path: pathname }),
+        keepalive: true
+      }).catch(() => {})
+    } catch { /* tracking is best-effort, never blocks the page */ }
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <ToastProvider>
       <CookieConsent />
+      <VisitorBeacon />
       <MaintenanceGate>
         <Routes>
         <Route path="/" element={<Root />} />
@@ -131,6 +164,7 @@ export default function App() {
         <Route path="/admin/ai" element={<Protected admin><AdminAI /></Protected>} />
         <Route path="/admin/users" element={<Protected admin><AdminUsers /></Protected>} />
         <Route path="/admin/reports" element={<Protected admin><AdminReports /></Protected>} />
+        <Route path="/admin/visitors" element={<Protected admin><AdminVisitors /></Protected>} />
         <Route path="/admin/settings" element={<Protected admin><AdminSettings /></Protected>} />
         <Route path="/admin/payments" element={<Protected admin><AdminPayments /></Protected>} />
         <Route path="/admin/addons" element={<Protected admin><AdminAddons /></Protected>} />

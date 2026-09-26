@@ -4,10 +4,30 @@ import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
 import { pointsSummary, pointsLeaderboard } from '../utils/points.js'
 import { getEntitlements, isAddonEnabled } from '../utils/addons.js'
+import { trackVisit, geoFromHeaders } from '../utils/visits.js'
 
 const router = express.Router()
 
 function parseJ(str, f = []) { try { return JSON.parse(str || '[]') } catch { return f } }
+
+// POST /api/analytics/track - first-party page-view beacon from the SPA.
+// Public (visitors aren't logged in), cookie-free, deduped server-side for
+// 30 min per session+path. Never fails the page: all errors swallowed.
+router.post('/track', async (req, res) => {
+  try {
+    const b = req.body || {}
+    await trackVisit({
+      visitorId: String(b.visitorId || '').slice(0, 64),
+      sessionId: String(b.sessionId || '').slice(0, 64),
+      ip: req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '',
+      referrer: String(req.headers.referer || req.headers.referrer || '').slice(0, 300),
+      userAgent: req.headers['user-agent'] || '',
+      path: String(b.path || '/').slice(0, 200),
+      geo: geoFromHeaders(req)
+    })
+  } catch { /* ignore */ }
+  res.status(204).end()
+})
 
 // Analytics Pro gate — shared by /heatmap, /predict and /report/share. The
 // basic overview/report/rankings/points stay free for everyone.

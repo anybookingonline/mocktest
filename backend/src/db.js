@@ -784,6 +784,33 @@ CREATE TABLE IF NOT EXISTS coupon_redemptions (
   created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_user ON coupon_redemptions(user_id);
+
+-- ---------------------------------------------------------------------------
+-- Visitor analytics — first-party tracking (no cookies, no third-party
+-- tracker). The SPA pings /api/track/visit on every route change; the server
+-- dedupes per session+path within 30 min (Redis/in-memory TTL) so refresh
+-- storms and SPA re-renders never inflate counts. Country comes from proxy
+-- headers (Cloudflare/Vercel) when present; IP + UA are stored raw for the
+-- admin traffic table.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS visitor_hits (
+  id SERIAL PRIMARY KEY,
+  visitor_id TEXT NOT NULL,          -- stable random browser id (localStorage)
+  session_id TEXT NOT NULL,          -- per-tab session id (sessionStorage)
+  ip TEXT DEFAULT '',
+  country TEXT DEFAULT '',
+  country_code TEXT DEFAULT '',
+  city TEXT DEFAULT '',
+  path TEXT DEFAULT '/',
+  referrer TEXT DEFAULT '',          -- raw Referer header
+  source TEXT DEFAULT 'direct',      -- normalized: direct|google|telegram|instagram|…
+  device TEXT DEFAULT 'desktop',     -- desktop|mobile|tablet
+  user_agent TEXT DEFAULT '',
+  created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_visitor_hits_created ON visitor_hits(created_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_hits_visitor ON visitor_hits(visitor_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_hits_source ON visitor_hits(source);
 `
 
 export async function initSchema() {
@@ -800,7 +827,7 @@ export async function initSchema() {
     } catch (e) {
       if (!/already exists/i.test(String(e.message))) throw e
     }
-    await client.query(`INSERT INTO schema_meta (key, value) VALUES ('version', '2.5.0') ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
+    await client.query(`INSERT INTO schema_meta (key, value) VALUES ('version', '2.6.0') ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
   } finally {
     client.release()
   }

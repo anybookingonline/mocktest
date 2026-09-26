@@ -4,6 +4,7 @@ import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { b2SelfTest, b2Status } from '../utils/b2.js'
 import { ADDONS } from '../utils/addons.js'
+import { visitorsSummary } from '../utils/visits.js'
 
 // Built from the ADDONS registry itself (not hand-copied) so a new addon's
 // enabled/monthly/yearly price keys are automatically readable/saveable here
@@ -36,6 +37,16 @@ router.get('/stats', async (req, res) => {
     newUsersToday: await u(`SELECT COUNT(*) c FROM users WHERE created_at::date = current_date`),
     attemptsToday: await u(`SELECT COUNT(*) c FROM attempts WHERE created_at::date = current_date OR started_at::date = current_date`)
   })
+})
+
+// GET /api/admin/visitors?page=&perPage= - first-party traffic analytics.
+// Summary cards (today/yesterday/total unique visitors + pageviews),
+// top referrer sources, top countries, top paths and a paginated detail table
+// (one row per session+path group, latest hit wins).
+router.get('/visitors', async (req, res) => {
+  const page = Number(req.query.page) || 1
+  const perPage = Number(req.query.perPage) || 50
+  res.json(await visitorsSummary({ page, perPage }))
 })
 
 // GET /api/admin/questions - same as questions but admin view (full)
