@@ -19,6 +19,7 @@ export default function Retention() {
   const [proofFile, setProofFile] = useState(null)
   const [couponCode, setCouponCode] = useState('')
   const [couponBusy, setCouponBusy] = useState(false)
+  const [addonCycle, setAddonCycle] = useState({}) // addonId -> 'monthly' | 'yearly'
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -321,10 +322,9 @@ export default function Retention() {
             <li>Keep your test history & results</li>
             <li>Keep doubts & AI explanations</li>
             <li>Keep bookmarks & analytics</li>
-            <li>🔥 AI Focus Areas + 🔁 AI Revision unlocked</li>
-            <li>⚔️ Unlimited Quiz Battles <span className="tiny muted">(free plan: 3/day)</span></li>
-            <li>💬 Unlimited AI Tutor doubts <span className="tiny muted">(free plan: 15/day)</span></li>
+            <li>💬 Higher daily AI Tutor doubt limit <span className="tiny muted">(free: 15/day → 50/day)</span></li>
           </ul>
+          <p className="tiny muted">⚔️ Quiz Battles free & unlimited for everyone — no plan needed. Focus Areas, Smart Revision, Analytics Pro etc. are separate add-ons below.</p>
           <GatewayPicker />
           {plan && <BuyButtons planId="retention_1y" active={active} />}
           {!active && (
@@ -356,20 +356,29 @@ export default function Retention() {
         {addons.map((a) => {
           const owned = hasAddon(a.id)
           const until = (status?.addons || []).find((x) => x.id === a.id)?.until
+          const cycle = addonCycle[a.id] || 'yearly'
+          const cur = a[cycle] || a.yearly
+          const planId = cycle === 'monthly' ? `${a.id}:monthly` : a.id
           return (
             <div key={a.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="spread mb">
                 <Badge kind="amber">{a.icon} {a.name}</Badge>
                 {owned && <Badge kind="green">active</Badge>}
               </div>
-              <div style={{ fontSize: 38, fontWeight: 800 }}>{currencySymbol(a.currency || 'INR')}{a.price}</div>
-              <p className="tiny muted">{a.days} days · one-time add-on</p>
+              <div className="row tiny mb" style={{ gap: 4 }}>
+                {['monthly', 'yearly'].map((c) => (
+                  <button key={c} className={`chip ${cycle === c ? 'active' : ''}`} style={{ padding: '2px 10px', background: cycle === c ? 'var(--accent)' : '', color: cycle === c ? '#fff' : '' }}
+                    onClick={() => setAddonCycle((m) => ({ ...m, [a.id]: c }))}>{c === 'monthly' ? 'Monthly' : 'Yearly'}</button>
+                ))}
+              </div>
+              <div style={{ fontSize: 38, fontWeight: 800 }}>{currencySymbol(a.currency || 'INR')}{cur.price}</div>
+              <p className="tiny muted">{cur.days} days · non-refundable</p>
               <p className="small mt" style={{ flex: 1 }}>{a.description}</p>
               <ul className="tiny" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.8 }}>
                 {(a.perks || []).map((p) => <li key={p}>{p}</li>)}
               </ul>
               <GatewayPicker />
-              <BuyButtons planId={a.id} active={owned} />
+              <BuyButtons planId={planId} active={owned} />
               {owned && until && (
                 <p className="tiny muted mt">Active until {new Date(until.replace(' ', 'T') + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
               )}
@@ -382,7 +391,7 @@ export default function Retention() {
           <div style={{ fontSize: 30 }}>🧩</div>
           <b className="small mt mb" style={{ display: 'block' }}>Kya kaise unlock hota hai?</b>
           <p className="tiny muted" style={{ flex: 1 }}>
-            Koi bhi paid plan ya add-on lene par AI Focus Areas automatically unlock ho jata hai. Current Affairs Pro alag add-on hai — sirf CA quiz ke liye. Plans aapke admin ke set kiye pricing par hain.
+            Har add-on apna alag hai — jo chahiye wahi lo. AI Max ek exception hai: usme AI Power, Voice Doubts, Smart Revision Pack aur Analytics Pro sab already included hain. Prices aapke admin ke set kiye hue hain.
           </p>
           <Link to="/focus" className="btn btn-ghost btn-sm">🔥 Focus preview →</Link>
         </div>

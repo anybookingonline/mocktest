@@ -13,20 +13,24 @@ export default function Analytics() {
   const [report, setReport] = useState(null)
   const [recs, setRecs] = useState([])
   const [heatmap, setHeatmap] = useState(null)
+  const [heatmapError, setHeatmapError] = useState('')
   const [predict, setPredict] = useState(null)
+  const [predictError, setPredictError] = useState('')
   const [shareUrl, setShareUrl] = useState(null)
   const [shareBusy, setShareBusy] = useState(false)
+  const [analyticsProAddon, setAnalyticsProAddon] = useState(true) // admin kill-switch, default true so it never flashes hidden
   const [tab, setTab] = useState('weak')
 
   useEffect(() => {
     api.get('/analytics/overview').then(setData).catch(() => {})
     api.get('/analytics/report').then(setReport).catch(() => {})
     api.get('/analytics/recommendations').then((d) => setRecs(d.recommendations)).catch(() => {})
+    api.get('/ai/features').then((d) => setAnalyticsProAddon(d.analyticsProAddon !== false)).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (tab === 'heatmap' && !heatmap) api.get('/analytics/heatmap').then(setHeatmap).catch(() => {})
-    if (tab === 'predict' && !predict && user?.exam_id) api.get(`/analytics/predict?examId=${user.exam_id}`).then(setPredict).catch(() => {})
+    if (tab === 'heatmap' && !heatmap) api.get('/analytics/heatmap').then(setHeatmap).catch((e) => setHeatmapError(e.message))
+    if (tab === 'predict' && !predict && user?.exam_id) api.get(`/analytics/predict?examId=${user.exam_id}`).then(setPredict).catch((e) => setPredictError(e.message))
   }, [tab])
 
   const shareReport = async () => {
@@ -45,20 +49,27 @@ export default function Analytics() {
 
   return (
     <StudentLayout title="Performance Analytics">
-      <div className="card mb spread">
-        <div>
-          <b className="small">👪 Parent Report</b>
-          <p className="tiny muted">Ek read-only link banao jo parents/guardian bina login ke dekh sakte hain.</p>
-          {shareUrl && <input className="input tiny mt" readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ maxWidth: 320 }} />}
+      {analyticsProAddon && (
+        <div className="card mb spread">
+          <div>
+            <b className="small">👪 Parent Report</b>
+            <p className="tiny muted">Ek read-only link banao jo parents/guardian bina login ke dekh sakte hain.</p>
+            {shareUrl && <input className="input tiny mt" readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ maxWidth: 320 }} />}
+          </div>
+          <div className="row">
+            <button className="btn btn-primary btn-sm" onClick={shareReport} disabled={shareBusy}>{shareBusy ? '…' : shareUrl ? '🔗 Copy again' : '🔗 Get share link'}</button>
+            {shareUrl && <button className="btn btn-ghost btn-sm" onClick={revokeShare}>Revoke</button>}
+          </div>
         </div>
-        <div className="row">
-          <button className="btn btn-primary btn-sm" onClick={shareReport} disabled={shareBusy}>{shareBusy ? '…' : shareUrl ? '🔗 Copy again' : '🔗 Get share link'}</button>
-          {shareUrl && <button className="btn btn-ghost btn-sm" onClick={revokeShare}>Revoke</button>}
-        </div>
-      </div>
+      )}
 
       <div className="row mb">
-        {[['weak', 'Weak Topic Analysis'], ['heatmap', 'Heatmap'], ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis'], ['predict', 'Rank Estimate']].map(([k, label]) => (
+        {[
+          ['weak', 'Weak Topic Analysis'],
+          ...(analyticsProAddon ? [['heatmap', 'Heatmap']] : []),
+          ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis'],
+          ...(analyticsProAddon ? [['predict', 'Rank Estimate']] : [])
+        ].map(([k, label]) => (
           <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -90,7 +101,8 @@ export default function Analytics() {
             <b className="small">Weak-area heatmap — every topic you've attempted, red = weak, green = strong</b>
             <span className="tiny muted">tile size ≈ how many questions attempted</span>
           </div>
-          {!heatmap && <Skeleton h={200} />}
+          {!heatmap && !heatmapError && <Skeleton h={200} />}
+          {heatmapError && <div className="empty">{heatmapError} <a href="/retention">Analytics Pro lo →</a></div>}
           {heatmap?.subjects?.length === 0 && <div className="empty">Answer more questions to build your heatmap.</div>}
           {heatmap?.subjects?.map((s) => (
             <div key={s.id} className="mb" style={{ marginBottom: 18 }}>
@@ -189,7 +201,8 @@ export default function Analytics() {
         <div className="card">
           <b className="small mb" style={{ display: 'block' }}>Rank estimate</b>
           {!user?.exam_id && <div className="empty">Profile me apna target exam select karo pehle.</div>}
-          {user?.exam_id && !predict && <Skeleton h={120} />}
+          {user?.exam_id && !predict && !predictError && <Skeleton h={120} />}
+          {predictError && <div className="empty">{predictError} <a href="/retention">Analytics Pro lo →</a></div>}
           {predict && !predict.enough && <div className="empty">{predict.message}</div>}
           {predict?.enough && (
             <>

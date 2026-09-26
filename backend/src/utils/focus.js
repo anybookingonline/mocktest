@@ -101,8 +101,10 @@ export async function getFocusAreas(examId, { force = false } = {}) {
 }
 
 export async function isFocusUnlocked(userId) {
-  // Unlocked by the dedicated focus_areas add-on OR any base paid entitlement.
+  // Real AI-cost feature — requires its own addon (or a bundle that includes
+  // it: ai_power/ai_max). Retention/voice-doubts alone no longer unlock this
+  // for free — base plan stays minimal, per the addon-first pricing model.
   const { getEntitlements } = await import('./addons.js')
   const ent = await getEntitlements(userId)
-  return Boolean(ent.focusAreas || ent.retention || ent.aiPower || ent.voiceDoubts)
+  return Boolean(ent.focusAreas || ent.aiPower || ent.aiMax)
 }

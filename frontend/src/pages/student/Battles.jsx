@@ -5,7 +5,7 @@ import { api } from '../../api/client.js'
 import { Badge, Empty, useToast } from '../../components/ui.jsx'
 
 // 1v1 Quiz Battles (#6) — quick-match or friend duels over HTTP polling.
-// Free: 3 battles/day; paid (Retention / AI Power Pack): unlimited. ELO ladder.
+// Free & unlimited for everyone (no paid gate) — competitive/viral hook. ELO ladder.
 export default function Battles() {
   const toast = useToast()
   const [exams, setExams] = useState([])
@@ -172,11 +172,7 @@ export default function Battles() {
             <div className="spread">
               <div>
                 <b>1v1 duel — same questions, 20s per round, speed bonus +1 ⚡</b>
-                <p className="tiny muted">
-                  {meta?.quota?.unlimited
-                    ? '✅ Unlimited battles (paid plan active)'
-                    : `Free quota: ${meta?.quota?.used ?? 0}/${meta?.quota?.limit ?? 3} battles aaj. Paid plan = unlimited.`}
-                </p>
+                <p className="tiny muted">✅ Free & unlimited battles for everyone</p>
               </div>
               <div className="row">
                 <select className="select" style={{ width: 190 }} value={examId} onChange={(e) => setExamId(e.target.value)}>

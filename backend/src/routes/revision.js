@@ -3,7 +3,24 @@ import { authRequired, adminOnly } from '../middleware/auth.js'
 import { dueRevision, startRevisionMock, generateDoubtMock, runRevisionCron, recordTopicOutcome } from '../utils/revision.js'
 import { solveDoubtWithAI, generateFlashcardsWithAI } from '../utils/aiTasks.js'
 import { aiLimiter } from '../middleware/rateLimit.js'
+import { getEntitlements, isAddonEnabled } from '../utils/addons.js'
 import db from '../db.js'
+
+// Smart Revision Pack gate — shared by /start and /flashcards. The due-list
+// (/due) and doubt-mock loop stay free; generating a fresh AI revision mock
+// or AI flashcards is the paid part (real AI cost each time).
+async function requireSmartRevision(req, res) {
+  if (!(await isAddonEnabled('smart_revision'))) {
+    res.status(404).json({ error: 'Smart Revision Pack is not available right now.' })
+    return false
+  }
+  const ent = await getEntitlements(req.user.id)
+  if (!ent.smartRevision && !ent.aiMax) {
+    res.status(402).json({ error: 'Smart Revision Pack chahiye — AI revision mocks, flashcards aur topic summaries iske through milte hain.', upgrade: 'smart_revision' })
+    return false
+  }
+  return true
+}
 
 // ---------------------------------------------------------------------------
 // Spaced Revision (#7) + Doubt Revision (#4) routes.
@@ -31,6 +48,7 @@ router.get('/due', async (req, res) => {
 
 // POST /api/revision/start — one-click 10-Q mixed revision mock
 router.post('/start', async (req, res) => {
+  if (!(await requireSmartRevision(req, res))) return
   const out = await startRevisionMock(req.user.id)
   if (out.empty) return res.status(404).json({ error: 'Aaj kuch due nahi hai — practice karte raho! 🎉' })
   res.status(201).json(out)
@@ -47,6 +65,7 @@ router.post('/doubt-mock', async (req, res) => {
 
 // GET /api/revision/flashcards/:topicId — AI-generated recall cards for a topic
 router.get('/flashcards/:topicId', aiLimiter(), async (req, res) => {
+  if (!(await requireSmartRevision(req, res))) return
   const row = await db.prepare(`
     SELECT t.id, t.name AS topic_name, c.name AS chapter_name, s.name AS subject_name, s.exam_id
     FROM topics t JOIN chapters c ON c.id = t.chapter_id JOIN subjects s ON s.id = c.subject_id

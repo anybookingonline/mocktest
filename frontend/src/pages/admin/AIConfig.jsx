@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AdminLayout } from '../../components/Layout.jsx'
 import { api } from '../../api/client.js'
 import { Badge, useToast } from '../../components/ui.jsx'
@@ -277,7 +278,7 @@ export default function AdminAI() {
               <b className="small">Free-seat member ko kya milta hai (jawaab: bahut limited)</b>
               <ul className="tiny muted" style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.9 }}>
                 <li>✅ Sirf <b>usi group ki chat</b> — padhna aur likhna</li>
-                <li>❌ Baaki premium features NAHI — AI Power Pack, Voice Doubts, unlimited battles paid hi rahenge</li>
+                <li>❌ Baaki paid add-ons NAHI — AI Power Pack, Voice Doubts, Smart Revision Pack, Analytics Pro apna alag purchase chahiye (Battles free hai sabke liye, iski zaroorat nahi)</li>
                 <li>⏳ Seat {cfg['groups.freeSeatDays'] || 45} din valid — deal active rehne par auto-extend</li>
                 <li>👀 Group Study (bina chat) sabke liye free hai — ye seat sirf Discussions chat ke liye</li>
               </ul>
@@ -293,79 +294,11 @@ export default function AdminAI() {
           <p className="tiny" style={{ color: 'var(--amber)' }}>⚠️ Voice doubts ON hai par OpenAI key missing — mic button students ko nahi dikhega jab tak key save na ho.</p>
         )}
         <hr className="divider" />
-        <b className="small mb" style={{ display: 'block' }}>Paid add-on pricing (students ke Plans page par dikhta hai)</b>
-        <p className="tiny muted mb">Jo add-on ON karoge wahi students ko Plans page par dikhega — OFF wale completely hidden. Price/validity turant live update hoti hai.</p>
-        <div className="field-row">
-          <label className="field"><span>⚡ AI Power Pack — ON/OFF</span>
-            <select className="select" value={cfg['addons.aiPowerEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.aiPowerEnabled', e.target.value)}>
-              <option value="true">On — sell to students</option>
-              <option value="false">Off — hidden from Plans page</option>
-            </select>
-          </label>
-          <label className="field"><span>AI Power Pack — price (₹)</span>
-            <input type="number" className="input" value={cfg['addons.aiPowerPrice'] || 99} onChange={(e) => set('addons.aiPowerPrice', e.target.value)} />
-          </label>
-          <label className="field"><span>AI Power Pack — validity (days)</span>
-            <input type="number" className="input" value={cfg['addons.aiPowerDays'] || 365} onChange={(e) => set('addons.aiPowerDays', e.target.value)} />
-          </label>
+        <div className="row" style={{ alignItems: 'center', gap: 10 }}>
+          <b className="small">Paid add-on pricing</b>
+          <Link to="/admin/addons" className="btn btn-ghost btn-sm">🧩 Manage in Add-ons →</Link>
         </div>
-        <div className="field-row">
-          <label className="field"><span>💎 AI Max — ON/OFF (top tier: Power + Voice included)</span>
-            <select className="select" value={cfg['addons.aiMaxEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.aiMaxEnabled', e.target.value)}>
-              <option value="true">On — sell to students</option>
-              <option value="false">Off — hidden from Plans page</option>
-            </select>
-          </label>
-          <label className="field"><span>AI Max — price (₹)</span>
-            <input type="number" className="input" value={cfg['addons.aiMaxPrice'] || 399} onChange={(e) => set('addons.aiMaxPrice', e.target.value)} />
-          </label>
-          <label className="field"><span>AI Max — validity (days)</span>
-            <input type="number" className="input" value={cfg['addons.aiMaxDays'] || 365} onChange={(e) => set('addons.aiMaxDays', e.target.value)} />
-          </label>
-        </div>
-        <div className="field-row">
-          <label className="field"><span>🎙️ Voice Doubts — ON/OFF</span>
-            <select className="select" value={cfg['addons.voiceEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.voiceEnabled', e.target.value)}>
-              <option value="true">On — sell to students</option>
-              <option value="false">Off — hidden from Plans page</option>
-            </select>
-          </label>
-          <label className="field"><span>Voice Doubts — price (₹)</span>
-            <input type="number" className="input" value={cfg['addons.voicePrice'] || 49} onChange={(e) => set('addons.voicePrice', e.target.value)} />
-          </label>
-          <label className="field"><span>Voice Doubts — validity (days)</span>
-            <input type="number" className="input" value={cfg['addons.voiceDays'] || 365} onChange={(e) => set('addons.voiceDays', e.target.value)} />
-          </label>
-        </div>
-        <div className="field-row">
-          <label className="field"><span>📰 Current Affairs Pro — ON/OFF</span>
-            <select className="select" value={cfg['addons.caEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.caEnabled', e.target.value)}>
-              <option value="true">On — sell to students</option>
-              <option value="false">Off — hidden from Plans page</option>
-            </select>
-          </label>
-          <label className="field"><span>Current Affairs Pro — price (₹)</span>
-            <input type="number" className="input" value={cfg['addons.caPrice'] || 99} onChange={(e) => set('addons.caPrice', e.target.value)} />
-          </label>
-          <label className="field"><span>Current Affairs Pro — validity (days)</span>
-            <input type="number" className="input" value={cfg['addons.caDays'] || 365} onChange={(e) => set('addons.caDays', e.target.value)} />
-          </label>
-        </div>
-        <div className="field-row">
-          <label className="field"><span>🔥 AI Focus Areas — ON/OFF</span>
-            <select className="select" value={cfg['addons.focusEnabled'] === 'false' ? 'false' : 'true'} onChange={(e) => set('addons.focusEnabled', e.target.value)}>
-              <option value="true">On — sell to students</option>
-              <option value="false">Off — hidden from Plans page</option>
-            </select>
-          </label>
-          <label className="field"><span>AI Focus Areas — price (₹)</span>
-            <input type="number" className="input" value={cfg['addons.focusPrice'] || 79} onChange={(e) => set('addons.focusPrice', e.target.value)} />
-          </label>
-          <label className="field"><span>AI Focus Areas — validity (days)</span>
-            <input type="number" className="input" value={cfg['addons.focusDays'] || 365} onChange={(e) => set('addons.focusDays', e.target.value)} />
-          </label>
-        </div>
-        <p className="tiny muted">Whisper, unlimited AI, daily CA quiz generation — ye sab aapke kharche wale features hain, isliye add-ons. Ek baar din me CA quiz AI cost hoti hai, sab CA users share karte hain — margin high rehta hai.</p>
+        <p className="tiny muted">On/off + monthly/yearly pricing for all 7 add-ons ab apne alag page par hai — Admin → Add-ons.</p>
         <hr className="divider" />
         <b className="small mb" style={{ display: 'block' }}>Feature toggles — CA page & Focus page visibility</b>
         <div className="field-row">

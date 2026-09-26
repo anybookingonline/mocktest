@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { loadMonetizationConfig, loadGatewayConfig, GATEWAYS, getRetentionStatus, activateRetention } from '../utils/retention.js'
-import { listPlans as listAddonPlans, ADDONS, activateAddon } from '../utils/addons.js'
+import { listPlans as listAddonPlans, ADDONS, activateAddon, isAddonPlan, priceForAddonPlan } from '../utils/addons.js'
 import { b2Configured, putFile } from '../utils/b2.js'
 import { getConfig } from '../utils/aiService.js'
 import { sendPaymentReceiptEmail } from '../utils/email.js'
@@ -118,7 +118,7 @@ const REFUND_WINDOW_DAYS = 15
 function refundEligibility(pay) {
   if (pay.status !== 'success') return { eligible: false, reason: 'Only completed payments are refundable.' }
   if (pay.refund_status && pay.refund_status !== 'none') return { eligible: false, reason: `Refund already ${pay.refund_status}.` }
-  if (ADDONS[pay.plan] || isGroupPlan(pay.plan)) {
+  if (isAddonPlan(pay.plan) || isGroupPlan(pay.plan)) {
     return { eligible: false, reason: 'Add-on and group-plan purchases are non-refundable.' }
   }
   const paidAt = new Date(String(pay.created_at).replace(' ', 'T') + 'Z')
@@ -163,9 +163,11 @@ router.post('/create-order', authRequired, async (req, res) => {
     return res.status(400).json({ error: `Payment gateway "${provider}" is not enabled. Ask admin to enable it.` })
   }
 
-  // Add-on plans price themselves; the retention plan uses the global price
-  const addonMeta = ADDONS[plan]
-  const amount = addonMeta ? Number(await getConfig(addonMeta.priceKey, String(addonMeta.defaultPrice))) : Number(cfg.price)
+  // Add-on plans (e.g. "ai_power" or "smart_revision:monthly") price
+  // themselves per their cycle; the retention plan uses the global price.
+  const addonPrice = await priceForAddonPlan(plan)
+  const addonId = plan.split(':')[0]
+  const amount = addonPrice != null ? addonPrice : Number(cfg.price)
   const gwCfg = await loadGatewayConfig(provider)
 
   if (provider === 'razorpay') {
@@ -177,7 +179,7 @@ router.post('/create-order', authRequired, async (req, res) => {
 
   if (provider === 'stripe') {
     if (!gwCfg.secretKey) return res.status(400).json({ error: 'Stripe is not configured. Ask admin to set the Stripe secret key.' })
-    const session = await stripeCreateCheckout({ secret: gwCfg.secretKey, amount, currency: cfg.currency, userId: req.user.id, plan, productName: addonMeta ? `ExamAI ${addonMeta.name}` : 'ExamAI 1-Year Data Retention' })
+    const session = await stripeCreateCheckout({ secret: gwCfg.secretKey, amount, currency: cfg.currency, userId: req.user.id, plan, productName: addonPrice != null ? `ExamAI ${ADDONS[addonId]?.name || addonId}` : 'ExamAI 1-Year Data Retention' })
     await insertPayment({ userId: req.user.id, provider, amount, currency: cfg.currency, plan, ref: session.id })
     return res.json({ provider, checkoutUrl: session.url, orderId: session.id, plan, amount, currency: cfg.currency })
   }
@@ -244,7 +246,7 @@ async function completeAndRespond(res, userId, provider, ref) {
     const out = await activateGroupPlan(pay)
     return res.json({ active: true, addon: 'group_discussions', group: out })
   }
-  if (ADDONS[pay.plan]) {
+  if (isAddonPlan(pay.plan)) {
     const until = await activateAddon(userId, pay.plan)
     return res.json({ active: true, retainUntil: until, addon: pay.plan })
   }
@@ -348,7 +350,7 @@ async function completePayment(provider, ref) {
   await db.prepare(`UPDATE payments SET status = 'success' WHERE id = ?`).run(pay.id)
   finalizeSuccessfulPayment({ ...pay, status: 'success' }) // invoice + receipt email (best-effort)
   if (isGroupPlan(pay.plan)) await activateGroupPlan(pay)
-  else if (ADDONS[pay.plan]) await activateAddon(pay.user_id, pay.plan)
+  else if (isAddonPlan(pay.plan)) await activateAddon(pay.user_id, pay.plan)
   else await activateRetention(pay.user_id, pay.plan)
 }
 
@@ -418,7 +420,7 @@ router.post('/admin/mark-paid', authRequired, platformOnly, async (req, res) => 
     const out = await activateGroupPlan(pay)
     return res.json({ ok: true, addon: 'group_discussions', group: out })
   }
-  if (ADDONS[pay.plan]) {
+  if (isAddonPlan(pay.plan)) {
     const addonUntil = await activateAddon(pay.user_id, pay.plan)
     return res.json({ ok: true, retainUntil: addonUntil, addon: pay.plan })
   }

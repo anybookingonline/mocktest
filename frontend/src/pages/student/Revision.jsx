@@ -15,9 +15,13 @@ export default function Revision() {
   const [summary, setSummary] = useState('')
   const [summaryBusy, setSummaryBusy] = useState(false)
   const [flashTopic, setFlashTopic] = useState(null)
+  const [smartRevisionAddon, setSmartRevisionAddon] = useState(true) // admin kill-switch (default true so it never flashes hidden before the flag loads)
 
   const load = () => api.get('/revision/due').then((d) => setDue(d.due || [])).catch(() => {})
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    api.get('/ai/features').then((d) => setSmartRevisionAddon(d.smartRevisionAddon !== false)).catch(() => {})
+  }, [])
 
   const openSummary = async (t) => {
     setSummaryTopic(t)
@@ -49,9 +53,13 @@ export default function Revision() {
             <b>Today's revision plan</b>
             <p className="tiny muted">AI aapke topic accuracy + time ke basis par ye decide karta hai ki kis topic ko aaj dohrana hai (forgetting-curve scheduling). Revision karte hi topic agle interval me chala jata hai.</p>
           </div>
-          <button className="btn btn-primary" onClick={startMock} disabled={busy || !due.length}>
-            {busy ? 'Preparing…' : `▶ Start Revision Test ${due.length ? `(${Math.min(10, due.length * 2)} Q)` : ''}`}
-          </button>
+          {smartRevisionAddon ? (
+            <button className="btn btn-primary" onClick={startMock} disabled={busy || !due.length}>
+              {busy ? 'Preparing…' : `▶ Start Revision Test ${due.length ? `(${Math.min(10, due.length * 2)} Q)` : ''}`}
+            </button>
+          ) : (
+            <span className="tiny muted">Smart Revision Pack is not available right now.</span>
+          )}
         </div>
       </div>
 
@@ -76,10 +84,12 @@ export default function Revision() {
                 <Progress value={t.accuracy} kind={t.accuracy >= 60 ? 'green' : t.accuracy >= 40 ? 'amber' : 'red'} />
               </>
             ) : <p className="tiny muted">Is topic ka data abhi kam hai — revision test se shuru karo.</p>}
-            <div className="row mt" style={{ gap: 6 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => openSummary(t)}>📖 Summary</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setFlashTopic(t)}>🗂️ Flashcards</button>
-            </div>
+            {smartRevisionAddon && (
+              <div className="row mt" style={{ gap: 6 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => openSummary(t)}>📖 Summary</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setFlashTopic(t)}>🗂️ Flashcards</button>
+              </div>
+            )}
           </div>
         ))}
       </div>

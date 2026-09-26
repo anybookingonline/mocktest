@@ -28,11 +28,11 @@ async function platformFacts() {
     getConfig('monetization.freeHoldHours', '24')
   ])
   const retention = catalog.plans[0]
-  const addonLines = catalog.addons.map((a) => `- ${a.name}: ₹${a.price} (${a.days} days)`).join('\n')
+  const addonLines = catalog.addons.map((a) => `- ${a.name}: ₹${a.monthly.price}/month or ₹${a.yearly.price}/year`).join('\n')
   return `PLATFORM FACTS (use ONLY these numbers — never invent prices/discounts):
 - Platform: ${platformName} — AI-powered mock tests & practice for Indian competitive exams (UPSC/Banking/SSC/Engineering) + Class 7–12.
-- Free plan: unlimited practice on shared questions, ${freeHold}-hour data hold, daily AI caps, 3 quiz battles/day.
-- Pro plan (Data Retention): ₹${cfg.price}/${retention.days} days, one-time. Keeps all history + unlocks AI Focus Areas, AI Revision, unlimited battles.
+- Free plan: unlimited practice on shared questions, ${freeHold}-hour data hold, daily AI caps. Quiz Battles are free and unlimited for everyone (paid or not).
+- Base plan (Data Retention): ₹${cfg.price}/${retention.days} days, one-time. Keeps your test history, doubts and bookmarks (no auto-delete) + a higher daily AI-doubt limit. Deeper features (AI Focus Areas, Smart Revision Pack, Analytics Pro, Voice Doubts, Current Affairs Pro) are separate add-ons below, monthly or yearly.
 - Add-ons:\n${addonLines}
 - Group deal: ${nPaid} paying members unlock ${mFree} free seat(s) in their study group.
 - Coupons: social-media codes give free pro/add-on days; applied on the Plans page.
@@ -89,10 +89,10 @@ Touch 1 = intro + free pilot. Touch 2 = nudge + one proof point. Touch 3 = case-
 
 // ----------------------------- public sales chat -----------------------------
 const FALLBACKS = [
-  { re: /(fee|fees|price|kitna|kitne|rate|cost|paise|₹)/i, msg: 'Pro plan (1-Year Data Retention) ₹499 one-time hai — pura test history + AI Focus Areas + unlimited battles unlock. Add-ons (AI Power, Voice Doubts, Current Affairs) ₹49–99 se start. Social media par free coupon codes bhi milte hain — Plans page par apply karo! 😊', quick: ['Free trial?', 'School plan?'] },
+  { re: /(fee|fees|price|kitna|kitne|rate|cost|paise|₹)/i, msg: 'Base plan (1-Year Data Retention) ek baar ka payment hai — pura test history + doubts save rehte hain. Deeper features (AI Focus Areas, Smart Revision Pack, Analytics Pro, Voice Doubts, Current Affairs) alag add-ons hain, monthly ya yearly — Plans page par sab dikhega. Social media par free coupon codes bhi milte hain! 😊', quick: ['Free trial?', 'School plan?'] },
   { re: /(free|trial|coupon|promo|discount|offer)/i, msg: 'Free plan me unlimited practice milta hai! Pro ke liye humare social pages par coupon codes post hote hain (Instagram/Telegram) — wo codes Plans page par lagao, free pro days milenge. 🎁', quick: ['Fees kitni hai?', '1v1 battle?'] },
   { re: /(school|schooling|coaching|institute|academy|institution|b2b|white.?label)/i, msg: 'Schools/coachings ke liye hum apna white-label AI test platform dete hain — aapke branding ke saath, 10-minute setup, pehla month FREE pilot. Aapka email/number + institute ka naam bata do, founder khud contact karega. 🏫', quick: ['Features kya hain?', 'Fees?'], escalate: true },
-  { re: /(battle|1v1|elo|leaderboard|rank)/i, msg: '1v1 Quiz Battles me aap dost ya random opponent se ELO-rated duel khelte ho — win par points + rank up. All-India leaderboard har exam ke liye. Free me 3 battles/day, pro me unlimited. ⚔️', quick: ['Fees?', 'Group study?'] },
+  { re: /(battle|1v1|elo|leaderboard|rank)/i, msg: '1v1 Quiz Battles me aap dost ya random opponent se ELO-rated duel khelte ho — win par points + rank up. All-India leaderboard har exam ke liye. Bilkul free aur unlimited, sabke liye! ⚔️', quick: ['Fees?', 'Group study?'] },
   { re: /(group|dosti|friends|team|study group)/i, msg: 'Group Study me dosto ke saath banao group — jab 2 members paid lete hain to 1 dost ka seat FREE! Chat, comparisons, sab kuch. 👥', quick: ['Fees?', 'Battles?'] },
   { re: /(test|mock|practice|pyq|question)/i, msg: 'AI-generated mock tests, PYQ practice, adaptive tests (weak topics par focus) — sab exam ke hisaab se. Free me practice unlimited, test history save karne ke liye Pro. 📝', quick: ['Fees kitni hai?', 'Free trial?'] }
 ]

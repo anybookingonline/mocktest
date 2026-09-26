@@ -5,7 +5,7 @@ import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
 import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions, summarizeTopicWithAI } from '../utils/aiTasks.js'
 import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS, visionSolvePhoto } from '../utils/aiService.js'
-import { getEntitlements, doubtCapFor } from '../utils/addons.js'
+import { getEntitlements, doubtCapFor, isAddonEnabled } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
 import { getContextualAd, publicAdFields } from '../utils/monetize.js'
 import { checkInstituteAiQuota } from '../utils/institute.js'
@@ -241,7 +241,13 @@ router.post('/explain', aiLimiter(), async (req, res) => {
 })
 
 // GET /api/ai/topic-summary/:topicId - concept + example + memorisation tip
+// (part of the Smart Revision Pack addon — real AI cost per call)
 router.get('/topic-summary/:topicId', aiLimiter(), async (req, res) => {
+  if (!(await isAddonEnabled('smart_revision'))) return res.status(404).json({ error: 'Smart Revision Pack is not available right now.' })
+  const ent = await getEntitlements(req.user.id)
+  if (!ent.smartRevision && !ent.aiMax) {
+    return res.status(402).json({ error: 'Smart Revision Pack chahiye topic summaries ke liye.', upgrade: 'smart_revision' })
+  }
   const row = await db.prepare(`
     SELECT t.id, t.name AS topic_name, c.name AS chapter_name, s.name AS subject_name, s.exam_id
     FROM topics t JOIN chapters c ON c.id = t.chapter_id JOIN subjects s ON s.id = c.subject_id

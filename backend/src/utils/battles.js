@@ -1,6 +1,5 @@
 import db from '../db.js'
 import crypto from 'crypto'
-import { getEntitlements } from './addons.js'
 import { getConfig } from './aiService.js'
 import { awardPoints } from './points.js'
 import { visibilityInstId } from './visibility.js'
@@ -15,7 +14,6 @@ import { visibilityInstId } from './visibility.js'
 
 export const ROUND_SECONDS = 20
 const K_FACTOR = 32
-const FREE_ROOMS = 3 // free users: 3 battles/day; ai_power: unlimited
 
 function code() {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -38,12 +36,11 @@ export async function battlesUsedToday(userId) {
   return Number(row?.c) || 0
 }
 
-export async function assertCanBattle(userId) {
-  const ent = await getEntitlements(userId)
-  if (ent.aiPower || ent.retention) return { allowed: true, unlimited: true }
-  const used = await battlesUsedToday(userId)
-  if (used >= FREE_ROOMS) return { allowed: false, used, limit: FREE_ROOMS }
-  return { allowed: true, used, limit: FREE_ROOMS }
+// Battles cost the platform ~nothing (no AI calls) and are a competitive/
+// viral hook — kept fully free and unlimited for everyone, on purpose, rather
+// than gated behind a paid plan.
+export async function assertCanBattle(_userId) {
+  return { allowed: true, unlimited: true }
 }
 
 // AI question fetch — only called when the bank runs dry for the exam/topic.

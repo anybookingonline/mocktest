@@ -3,6 +3,18 @@ import bcrypt from 'bcryptjs'
 import db from '../db.js'
 import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { b2SelfTest, b2Status } from '../utils/b2.js'
+import { ADDONS } from '../utils/addons.js'
+
+// Built from the ADDONS registry itself (not hand-copied) so a new addon's
+// enabled/monthly/yearly price keys are automatically readable/saveable here
+// the moment it's added to addons.js — never falls out of sync.
+function addonConfigKeys() {
+  const keys = []
+  for (const a of Object.values(ADDONS)) {
+    keys.push(a.enabledKey, a.monthly.priceKey, a.yearly.priceKey)
+  }
+  return keys
+}
 
 const router = express.Router()
 router.use(authRequired, platformOnly)
@@ -97,9 +109,7 @@ router.get('/reports', async (req, res) => {
 router.get('/settings', async (req, res) => {
   const keys = ['platform.name', 'platform.tagline', 'platform.supportEmail', 'platform.logoUrl', 'platform.domain', 'ai.provider', 'ai.fallbackEnabled', 'ai.cacheEnabled', 'ai.cacheTtlDays', 'deepseek.apiKey', 'deepseek.model', 'gemini.apiKey', 'gemini.model', 'gemini.visionModel', 'openrouter.apiKey', 'openrouter.model',
     'monetization.gateways', 'monetization.provider', 'monetization.price', 'monetization.currency', 'monetization.retentionDays', 'monetization.freeHoldHours',
-    'addons.aiPowerEnabled', 'addons.aiPowerPrice', 'addons.aiPowerDays', 'addons.aiMaxEnabled', 'addons.aiMaxPrice', 'addons.aiMaxDays',
-    'addons.voiceEnabled', 'addons.voicePrice', 'addons.voiceDays',
-    'addons.caEnabled', 'addons.caPrice', 'addons.caDays', 'addons.focusEnabled', 'addons.focusPrice', 'addons.focusDays',
+    ...addonConfigKeys(),
     'features.currentAffairs', 'features.focusAreas',
     'features.groupStudy', 'features.groupDiscussions', 'features.battles',
     'groups.freeAfterPaid', 'groups.freeSlots', 'groups.maxFree', 'groups.maxMembers', 'groups.freeSeatDays',

@@ -3,10 +3,26 @@ import crypto from 'crypto'
 import db from '../db.js'
 import { authRequired } from '../middleware/auth.js'
 import { pointsSummary, pointsLeaderboard } from '../utils/points.js'
+import { getEntitlements, isAddonEnabled } from '../utils/addons.js'
 
 const router = express.Router()
 
 function parseJ(str, f = []) { try { return JSON.parse(str || '[]') } catch { return f } }
+
+// Analytics Pro gate — shared by /heatmap, /predict and /report/share. The
+// basic overview/report/rankings/points stay free for everyone.
+async function requireAnalyticsPro(req, res) {
+  if (!(await isAddonEnabled('analytics_pro'))) {
+    res.status(404).json({ error: 'Analytics Pro is not available right now.' })
+    return false
+  }
+  const ent = await getEntitlements(req.user.id)
+  if (!ent.analyticsPro && !ent.aiMax) {
+    res.status(402).json({ error: 'Analytics Pro chahiye — weak-area heatmap, rank estimate aur parent report iske through milte hain.', upgrade: 'analytics_pro' })
+    return false
+  }
+  return true
+}
 
 // GET /api/analytics/report/shared/:token - PUBLIC (no login) read-only
 // Parent Report view. Registered before router.use(authRequired) below so it
@@ -36,6 +52,7 @@ router.use(authRequired)
 
 // POST /api/analytics/report/share - get-or-create this student's parent-report link
 router.post('/report/share', async (req, res) => {
+  if (!(await requireAnalyticsPro(req, res))) return
   const token = crypto.randomBytes(16).toString('hex')
   // ON CONFLICT DO NOTHING + re-select: a double-click racing two inserts
   // never hits the user_id UNIQUE constraint as an unhandled error.
@@ -99,6 +116,7 @@ router.get('/overview', async (req, res) => {
 // this returns everything the student has attempted so a heatmap can colour
 // every cell, not just the worst few).
 router.get('/heatmap', async (req, res) => {
+  if (!(await requireAnalyticsPro(req, res))) return
   const uid = req.user.id
   const examId = req.query.examId ? Number(req.query.examId) : null
   const rows = await db.prepare(`
@@ -199,6 +217,7 @@ router.get('/air', async (req, res) => {
 // prediction would be misleading. Widens the range when the in-app sample
 // for this exam is small (less confidence with fewer data points).
 router.get('/predict', async (req, res) => {
+  if (!(await requireAnalyticsPro(req, res))) return
   const examId = Number(req.query.examId)
   if (!examId) return res.status(400).json({ error: 'examId required' })
   const uid = req.user.id
