@@ -17,6 +17,7 @@ export default function Doubts() {
   const [transcribing, setTranscribing] = useState(false)
   const [ad, setAd] = useState(null) // contextual ad from the latest tutor answer (free users)
   const [quota, setQuota] = useState(null) // { capped, limit, used, remaining } | { unlimited }
+  const [hintMode, setHintMode] = useState(false) // Socratic tutor: hints instead of a direct answer
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
 
@@ -52,9 +53,9 @@ export default function Doubts() {
     if (!text) return
     setBusy(true)
     try {
-      const d = await api.post('/ai/doubt', { questionText: '', message: text })
+      const d = await api.post('/ai/doubt', { questionText: '', message: text, mode: hintMode ? 'socratic' : 'direct' })
       setAd(d.ad || null)
-      toast('Answered by AI tutor', 'ok')
+      toast(hintMode ? 'Hint from AI tutor' : 'Answered by AI tutor', 'ok')
       setMsg('')
       load()
       loadQuota()
@@ -173,6 +174,10 @@ export default function Doubts() {
             {busy || transcribing ? 'Thinking…' : 'Ask AI Tutor'}
           </button>
         </div>
+        <label className="row small mt" style={{ alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={hintMode} onChange={(e) => setHintMode(e.target.checked)} />
+          🧠 Hint mode — guide me step by step instead of giving the answer directly
+        </label>
         {recording && <p className="tiny mt" style={{ color: 'var(--red)' }}>🔴 Recording… apna doubt bolo, phir ⏹ dabao</p>}
         {transcribing && <p className="tiny mt">✍️ Aapki baat text me convert ho rahi hai…</p>}
         {flags.voiceDoubts && !flags.voiceUnlocked && (
@@ -202,17 +207,63 @@ export default function Doubts() {
       )}
       <div className="col">
         {history.map((h) => (
-          <div key={h.id} className="card">
-            <div className="spread mb"><b className="small">{h.question_text || h.message?.slice(0, 90)}</b><span className="tiny">{h.created_at}</span></div>
-            <div className="ai-bubble">{h.ai_response}</div>
-            <div className="row mt">
-              <button className="btn btn-ghost btn-sm" onClick={() => makeDoubtMock(h.id)} disabled={mockBusy === h.id}>
-                {mockBusy === h.id ? 'Generating…' : '🎯 Practice 3 similar questions'}
-              </button>
-            </div>
-          </div>
+          <DoubtCard key={h.id} doubt={h} onMock={() => makeDoubtMock(h.id)} mockBusy={mockBusy === h.id} onReplied={load} />
         ))}
       </div>
     </StudentLayout>
+  )
+}
+
+// One doubt "card" — the original Q&A, its Socratic hint replies (if any)
+// nested below in order, and (for a socratic thread) a small box to continue
+// the conversation ("still stuck? ask for another hint").
+function DoubtCard({ doubt: h, onMock, mockBusy, onReplied }) {
+  const toast = useToast()
+  const [reply, setReply] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const sendReply = async () => {
+    const text = reply.trim()
+    if (!text) return
+    setBusy(true)
+    try {
+      await api.post('/ai/doubt', { message: text, parentDoubtId: h.id })
+      setReply('')
+      onReplied()
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card">
+      <div className="spread mb">
+        <b className="small">{h.question_text || h.message?.slice(0, 90)}</b>
+        <span className="row" style={{ gap: 6 }}>
+          {h.mode === 'socratic' && <Badge kind="purple">🧠 hint mode</Badge>}
+          <span className="tiny">{h.created_at}</span>
+        </span>
+      </div>
+      <div className="ai-bubble">{h.ai_response}</div>
+      {(h.replies || []).map((r) => (
+        <div key={r.id} style={{ marginTop: 10, paddingLeft: 14, borderLeft: '2px solid var(--border)' }}>
+          <p className="tiny muted" style={{ margin: '0 0 4px' }}>You: {r.message}</p>
+          <div className="ai-bubble">{r.ai_response}</div>
+        </div>
+      ))}
+      {h.mode === 'socratic' && (
+        <div className="row mt" style={{ gap: 8 }}>
+          <input className="input" style={{ flex: 1 }} placeholder="Still stuck? Say what you tried, or ask for the answer…"
+            value={reply} onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') sendReply() }} />
+          <button className="btn btn-ghost btn-sm" onClick={sendReply} disabled={busy || !reply.trim()}>
+            {busy ? '…' : 'Reply'}
+          </button>
+        </div>
+      )}
+      <div className="row mt">
+        <button className="btn btn-ghost btn-sm" onClick={onMock} disabled={mockBusy}>
+          {mockBusy ? 'Generating…' : '🎯 Practice 3 similar questions'}
+        </button>
+      </div>
+    </div>
   )
 }

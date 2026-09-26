@@ -56,6 +56,46 @@ export default function Results() {
     return Math.max(1, Math.min(99, Math.round(attempt.accuracy / 2 + 30)))
   }
 
+  // Per-question timing insight — combines correctness + time-vs-expected to
+  // tell WHY a question went wrong, not just that it did: rushed-and-wrong
+  // ("careless"), slow-and-wrong ("concept gap"), or slow-but-right (needs
+  // speed practice, not concept work). Skipped questions aren't classified —
+  // they get their own time-management insight below.
+  const classifyTiming = (q, a) => {
+    if (!a || a.selected == null) return null
+    const expected = Number(q.estimated_time) || 90
+    const spent = Number(a.timeSpent) || 0
+    if (a.correct) {
+      return spent > expected * 1.3 ? { kind: 'amber', label: '🐢 Slow but correct', hint: 'You know this — build speed with timed practice.' } : null
+    }
+    if (spent < expected * 0.5) return { kind: 'red', label: '⚡ Careless mistake', hint: 'Rushed — you likely knew it. Re-check before submitting next time.' }
+    if (spent > expected * 1.3) return { kind: 'red', label: '🧩 Concept gap', hint: 'Took time and still wrong — revisit this concept before more practice.' }
+    return null
+  }
+
+  // Time-management: are skipped questions clustered near the end (ran out of
+  // time) and/or was pacing on answered questions much slower than expected?
+  const timeInsight = (() => {
+    if (!skippedList.length) return null
+    const n = results.length
+    const avgSkipPos = skippedList.reduce((sum, r) => sum + results.indexOf(r), 0) / skippedList.length
+    const backHalf = avgSkipPos > n * 0.6
+    const answered = results.filter((r) => r.a?.selected != null)
+    const avgExpected = answered.length ? answered.reduce((s, r) => s + (Number(r.q.estimated_time) || 90), 0) / answered.length : 0
+    const avgSpent = answered.length ? answered.reduce((s, r) => s + (Number(r.a?.timeSpent) || 0), 0) / answered.length : 0
+    if (backHalf && avgSpent > avgExpected * 1.1) {
+      return `⏱️ Time-management: ${skippedList.length} question(s) skipped, mostly toward the end — you spent longer than expected on earlier questions. Try setting a per-question time budget.`
+    }
+    if (backHalf) return `⏱️ ${skippedList.length} question(s) skipped near the end — pace yourself to reach every question next time.`
+    return null
+  })()
+
+  const timingSummary = results.reduce((acc, r) => {
+    const c = classifyTiming(r.q, r.a)
+    if (c) acc[c.label] = (acc[c.label] || 0) + 1
+    return acc
+  }, {})
+
   return (
     <div className="content" style={{ maxWidth: 1100 }}>
       <div className="card mb" style={{ background: 'linear-gradient(120deg, rgba(99,102,241,0.2), rgba(34,211,238,0.1))', border: '1px solid rgba(99,102,241,0.35)' }}>
@@ -95,6 +135,18 @@ export default function Results() {
         </div>
       </div>
 
+      {(Object.keys(timingSummary).length > 0 || timeInsight) && (
+        <div className="card mb">
+          <b className="small">Why questions went wrong — accuracy + time combined</b>
+          <div className="row mt" style={{ flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(timingSummary).map(([label, count]) => (
+              <span key={label} className="chip">{label}: {count}</span>
+            ))}
+          </div>
+          {timeInsight && <p className="small mt" style={{ color: 'var(--amber)' }}>{timeInsight}</p>}
+        </div>
+      )}
+
       <div className="spread mb">
         <b>Detailed review — {shown.length} questions</b>
         <div className="row">
@@ -108,6 +160,7 @@ export default function Results() {
 
       {shown.map(({ q, a }, i) => {
         const isCorrect = a?.correct
+        const timing = classifyTiming(q, a)
         return (
           <div key={q.id} className="card qcard mb" style={{ opacity: reviewMode === 'all' && a?.selected == null ? 0.75 : 1 }}>
             <div className="spread mb">
@@ -118,8 +171,9 @@ export default function Results() {
                 {a?.selected == null && <Badge kind="amber">Skipped</Badge>}
                 {isCorrect && <Badge kind="green">Correct</Badge>}
                 {a?.selected != null && !isCorrect && <Badge kind="red">Wrong</Badge>}
+                {timing && <span title={timing.hint}><Badge kind={timing.kind}>{timing.label}</Badge></span>}
               </div>
-              <span className="tiny">{fmtDuration(a?.timeSpent || 0)} spent</span>
+              <span className="tiny">{fmtDuration(a?.timeSpent || 0)} spent{q.estimated_time ? ` (expected ~${fmtDuration(q.estimated_time)})` : ''}</span>
             </div>
             <div className="qtext">{q.question_text}</div>
             <div className="mt">

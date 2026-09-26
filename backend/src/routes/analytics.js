@@ -51,6 +51,45 @@ router.get('/overview', async (req, res) => {
   })
 })
 
+// GET /api/analytics/heatmap - full subject -> chapter -> topic accuracy grid
+// (weakTopics/strongTopics in /overview only show the top-8/top-5 extremes;
+// this returns everything the student has attempted so a heatmap can colour
+// every cell, not just the worst few).
+router.get('/heatmap', async (req, res) => {
+  const uid = req.user.id
+  const examId = req.query.examId ? Number(req.query.examId) : null
+  const rows = await db.prepare(`
+    SELECT ts.topic_id, ts.attempts, ts.correct, t.name topic_name, t.chapter_id,
+           c.name chapter_name, c.subject_id, s.name subject_name, s.exam_id
+    FROM topic_stats ts
+    JOIN topics t ON t.id = ts.topic_id
+    JOIN chapters c ON c.id = t.chapter_id
+    JOIN subjects s ON s.id = c.subject_id
+    WHERE ts.user_id = ?${examId ? ' AND s.exam_id = ?' : ''}
+  `).all(...(examId ? [uid, examId] : [uid]))
+
+  const subjects = new Map()
+  for (const r of rows) {
+    if (!subjects.has(r.subject_id)) subjects.set(r.subject_id, { id: r.subject_id, name: r.subject_name, chapters: new Map(), attempts: 0, correct: 0 })
+    const subj = subjects.get(r.subject_id)
+    subj.attempts += r.attempts; subj.correct += r.correct
+    if (!subj.chapters.has(r.chapter_id)) subj.chapters.set(r.chapter_id, { id: r.chapter_id, name: r.chapter_name, topics: [], attempts: 0, correct: 0 })
+    const chap = subj.chapters.get(r.chapter_id)
+    chap.attempts += r.attempts; chap.correct += r.correct
+    chap.topics.push({ id: r.topic_id, name: r.topic_name, attempts: r.attempts, correct: r.correct, accuracy: r.attempts ? Math.round((r.correct / r.attempts) * 100) : null })
+  }
+
+  const acc = (a, c) => a ? Math.round((c / a) * 100) : null
+  const out = [...subjects.values()].map((s) => ({
+    id: s.id, name: s.name, attempts: s.attempts, accuracy: acc(s.attempts, s.correct),
+    chapters: [...s.chapters.values()]
+      .map((c) => ({ id: c.id, name: c.name, attempts: c.attempts, accuracy: acc(c.attempts, c.correct), topics: c.topics.sort((a, b) => (a.accuracy ?? 100) - (b.accuracy ?? 100)) }))
+      .sort((a, b) => (a.accuracy ?? 100) - (b.accuracy ?? 100))
+  })).sort((a, b) => (a.accuracy ?? 100) - (b.accuracy ?? 100))
+
+  res.json({ subjects: out })
+})
+
 // GET /api/analytics/recommendations - AI-powered personalized recommendations
 router.get('/recommendations', async (req, res) => {
   const uid = req.user.id

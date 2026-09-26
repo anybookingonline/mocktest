@@ -42,7 +42,9 @@ router.get('/features', async (req, res) => {
 router.get('/doubt-quota', async (req, res) => {
   const ent = await getEntitlements(req.user.id)
   const cap = await doubtCapFor(ent)
-  const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
+  // Only root doubts count against the daily cap — Socratic hint follow-ups
+  // within an already-counted thread are free (see /doubt below).
+  const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND parent_doubt_id IS NULL AND created_at::date = current_date`).get(req.user.id)
   const u = Math.min(Number(used?.c) || 0, cap)
   res.json({
     capped: true,
@@ -55,38 +57,59 @@ router.get('/doubt-quota', async (req, res) => {
 })
 
 // POST /api/ai/doubt - AI doubt solving for any question
+// body.mode: 'direct' (default, straight answer) | 'socratic' (hint-by-hint —
+// see solveDoubtWithAI). body.parentDoubtId: continue an existing Socratic
+// thread (a "still stuck?" follow-up) instead of starting a new doubt.
 router.post('/doubt', aiLimiter(), async (req, res) => {
-  const { questionId, questionText, message } = req.body || {}
+  const { questionId, questionText, message, mode, parentDoubtId } = req.body || {}
   if (!message) return res.status(400).json({ error: 'message required' })
-  // Pilot loss guardrail: per-institute daily AI quota (all students combined).
-  // Applies before per-user entitlement checks so a free-month pilot can never
-  // run an unbounded AI bill (docs/pricing-audit.md §3).
-  const instQuota = await checkInstituteAiQuota(req.user.id)
-  if (!instQuota.ok) {
-    return res.status(429).json({
-      error: `Aaj aapke institute ka AI quota (${instQuota.quota} doubts) khatam ho gaya hai — kal subah phir try karo.`,
-      quota: instQuota.quota,
-      used: instQuota.used
-    })
+
+  // A follow-up in an existing thread: load the root + prior exchanges so the
+  // AI sees the whole hint history, and skip the daily-cap/quota checks below
+  // (the thread's root doubt already counted as this session's "1 doubt").
+  let root = null
+  let thread = []
+  if (parentDoubtId) {
+    const parentRow = await db.prepare('SELECT * FROM doubts WHERE id = ? AND user_id = ?').get(Number(parentDoubtId), req.user.id)
+    if (!parentRow) return res.status(404).json({ error: 'Original doubt not found' })
+    const rootId = parentRow.parent_doubt_id || parentRow.id
+    thread = await db.prepare(`SELECT * FROM doubts WHERE user_id = ? AND (id = ? OR parent_doubt_id = ?) ORDER BY created_at ASC`)
+      .all(req.user.id, rootId, rootId)
+    root = thread[0]
+  } else {
+    // Pilot loss guardrail: per-institute daily AI quota (all students combined).
+    // Applies before per-user entitlement checks so a free-month pilot can never
+    // run an unbounded AI bill (docs/pricing-audit.md §3).
+    const instQuota = await checkInstituteAiQuota(req.user.id)
+    if (!instQuota.ok) {
+      return res.status(429).json({
+        error: `Aaj aapke institute ka AI quota (${instQuota.quota} doubts) khatam ho gaya hai — kal subah phir try karo.`,
+        quota: instQuota.quota,
+        used: instQuota.used
+      })
+    }
+    // Unit-economics guard: every user gets a daily doubt cap by tier
+    // (free=monetization.freeDoubtsPerDay, paid=monetization.paidDoubtsPerDay
+    // soft-cap). Without this, every free account costs real AI money with
+    // zero revenue attached (see docs/pricing-audit.md). Only root doubts
+    // count — Socratic follow-ups (handled in the branch above) don't re-check.
+    const entGuard = await getEntitlements(req.user.id)
+    const cap = await doubtCapFor(entGuard)
+    const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND parent_doubt_id IS NULL AND created_at::date = current_date`).get(req.user.id)
+    if (Number(used?.c) >= cap) {
+      return res.status(402).json({
+        error: entGuard.aiPower || entGuard.retention
+          ? `Aaj ke ${cap} AI doubts (fair-use limit) khatam ho gaye — kal phir try karo. Priority support: support@aisepadho.com`
+          : `Aaj ke ${cap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo zyada doubts ke liye.`,
+        upgrade: entGuard.aiPower ? null : 'ai_power'
+      })
+    }
   }
-  // Unit-economics guard: every user gets a daily doubt cap by tier
-  // (free=monetization.freeDoubtsPerDay, paid=monetization.paidDoubtsPerDay
-  // soft-cap). Without this, every free account costs real AI money with
-  // zero revenue attached (see docs/pricing-audit.md).
-  const entGuard = await getEntitlements(req.user.id)
-  const cap = await doubtCapFor(entGuard)
-  const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND created_at::date = current_date`).get(req.user.id)
-  if (Number(used?.c) >= cap) {
-    return res.status(402).json({
-      error: entGuard.aiPower || entGuard.retention
-        ? `Aaj ke ${cap} AI doubts (fair-use limit) khatam ho gaye — kal phir try karo. Priority support: support@aisepadho.com`
-        : `Aaj ke ${cap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo zyada doubts ke liye.`,
-      upgrade: entGuard.aiPower ? null : 'ai_power'
-    })
-  }
+
   let q = null
-  if (questionId) {
-    q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId)
+  const effQuestionId = root ? root.question_id : questionId
+  if (effQuestionId) {
+    q = await db.prepare('SELECT * FROM questions WHERE id = ?').get(effQuestionId)
     // AI-tutor context: institute-private questions leak nahi hone chahiye —
     // dusre institute ka question explain karne se pehle ownership check.
     if (q?.institute_id) {
@@ -94,37 +117,45 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
       if (Number(q.institute_id) !== instId) q = null
     }
   }
+  const effMode = root ? root.mode : (mode === 'socratic' ? 'socratic' : 'direct')
+  const effQuestionText = root ? root.question_text : (q?.question_text || questionText || '')
+  const hintRound = thread.length // 0 for a fresh doubt, 1+ for each follow-up
+
   try {
     const response = await solveDoubtWithAI({
-      questionText: q?.question_text || questionText || '',
+      questionText: effQuestionText,
       options: q ? JSON.parse(q.options_json || '[]') : [],
       explanation: q?.explanation || '',
-      studentMessage: message
+      studentMessage: message,
+      mode: effMode,
+      thread,
+      hintRound
     })
-    await db.prepare(`INSERT INTO doubts (user_id, question_id, question_text, message, ai_response, model)
-      VALUES (?,?,?,?,?,?)`).run(req.user.id, questionId || null, q?.question_text || questionText || null, message, response, 'ai')
-    // Recognition: asking earns points immediately; resolution is awarded by
-    // the tutor flow when the student confirms it helped (not per API call —
-    // otherwise every spam doubt would farm resolution points too).
-    await awardPoints(req.user.id, 'doubt_asked')
-    // Contextual ad (free users only; paid users keep a clean tutor surface).
-    // Fire-and-forget semantics: ad failure never affects the doubt response.
+    const rec = await db.prepare(`INSERT INTO doubts (user_id, question_id, question_text, message, ai_response, model, parent_doubt_id, mode, hint_round)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(req.user.id, effQuestionId || null, effQuestionText || null, message, response, 'ai', root ? root.id : null, effMode, hintRound)
+    // Recognition + quota only for the root of a doubt — follow-up hint
+    // replies within the same thread don't each earn/cost separately.
     let ad = null
-    try {
-      const ent = await getEntitlements(req.user.id)
-      if (!ent.aiPower) {
-        ad = publicAdFields(await getContextualAd({
-          messages: [
-            { role: 'user', content: (q?.question_text || questionText || '') + ' — ' + message },
-            { role: 'assistant', content: String(response).slice(0, 500) }
-          ],
-          sessionId: `doubt-${req.user.id}`,
-          user: { id: req.user.id },
-          device: { ua: req.headers['user-agent'] || '', ip: req.ip || '' }
-        }))
-      }
-    } catch { /* ads are best-effort */ }
-    res.json({ response, ad })
+    if (!root) {
+      await awardPoints(req.user.id, 'doubt_asked')
+      // Contextual ad (free users only; paid users keep a clean tutor surface).
+      // Fire-and-forget semantics: ad failure never affects the doubt response.
+      try {
+        const ent = await getEntitlements(req.user.id)
+        if (!ent.aiPower) {
+          ad = publicAdFields(await getContextualAd({
+            messages: [
+              { role: 'user', content: (effQuestionText || '') + ' — ' + message },
+              { role: 'assistant', content: String(response).slice(0, 500) }
+            ],
+            sessionId: `doubt-${req.user.id}`,
+            user: { id: req.user.id },
+            device: { ua: req.headers['user-agent'] || '', ip: req.ip || '' }
+          }))
+        }
+      } catch { /* ads are best-effort */ }
+    }
+    res.json({ response, ad, doubtId: rec.lastInsertRowid, rootDoubtId: root ? root.id : rec.lastInsertRowid, mode: effMode, hintRound })
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
   }
@@ -179,9 +210,20 @@ router.get('/telegram/link', async (req, res) => {
 })
 
 // GET /api/ai/doubts - user's doubt history
+// Roots newest-first (list order), each with its Socratic hint replies
+// nested underneath in chronological order (conversation order).
 router.get('/doubts', async (req, res) => {
-  const rows = await db.prepare('SELECT * FROM doubts WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(req.user.id)
-  res.json({ doubts: rows })
+  const roots = await db.prepare('SELECT * FROM doubts WHERE user_id = ? AND parent_doubt_id IS NULL ORDER BY created_at DESC LIMIT 50').all(req.user.id)
+  if (roots.length) {
+    const replies = await db.prepare(`SELECT * FROM doubts WHERE user_id = ? AND parent_doubt_id IS NOT NULL ORDER BY created_at ASC`).all(req.user.id)
+    const byRoot = new Map()
+    for (const r of replies) {
+      if (!byRoot.has(r.parent_doubt_id)) byRoot.set(r.parent_doubt_id, [])
+      byRoot.get(r.parent_doubt_id).push(r)
+    }
+    for (const root of roots) root.replies = byRoot.get(root.id) || []
+  }
+  res.json({ doubts: roots })
 })
 
 // ------------------------------- Adaptive engine ----------------------------

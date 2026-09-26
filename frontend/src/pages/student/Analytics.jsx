@@ -9,6 +9,7 @@ export default function Analytics() {
   const [data, setData] = useState(null)
   const [report, setReport] = useState(null)
   const [recs, setRecs] = useState([])
+  const [heatmap, setHeatmap] = useState(null)
   const [tab, setTab] = useState('weak')
 
   useEffect(() => {
@@ -17,10 +18,14 @@ export default function Analytics() {
     api.get('/analytics/recommendations').then((d) => setRecs(d.recommendations)).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (tab === 'heatmap' && !heatmap) api.get('/analytics/heatmap').then(setHeatmap).catch(() => {})
+  }, [tab])
+
   return (
     <StudentLayout title="Performance Analytics">
       <div className="row mb">
-        {[['weak', 'Weak Topic Analysis'], ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis']].map(([k, label]) => (
+        {[['weak', 'Weak Topic Analysis'], ['heatmap', 'Heatmap'], ['subjects', 'Subject-wise'], ['trend', 'Score Trend'], ['recommendations', 'Recommendations'], ['speed', 'Speed Analysis']].map(([k, label]) => (
           <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -43,6 +48,42 @@ export default function Analytics() {
             )
           })}
           {data && data.weakTopics.length === 0 && <div className="empty">Answer more questions (min 2 per topic) to unlock weak-topic analysis.</div>}
+        </div>
+      )}
+
+      {tab === 'heatmap' && (
+        <div className="card">
+          <div className="spread mb">
+            <b className="small">Weak-area heatmap — every topic you've attempted, red = weak, green = strong</b>
+            <span className="tiny muted">tile size ≈ how many questions attempted</span>
+          </div>
+          {!heatmap && <Skeleton h={200} />}
+          {heatmap?.subjects?.length === 0 && <div className="empty">Answer more questions to build your heatmap.</div>}
+          {heatmap?.subjects?.map((s) => (
+            <div key={s.id} className="mb" style={{ marginBottom: 18 }}>
+              <div className="spread small mb">
+                <b>{s.name}</b>
+                <span className="tiny muted">{s.accuracy != null ? `${s.accuracy}% overall` : '—'}</span>
+              </div>
+              {s.chapters.map((c) => (
+                <div key={c.id} className="row" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                  <span className="tiny muted" style={{ width: 140, flexShrink: 0 }}>{c.name}</span>
+                  {c.topics.map((t) => (
+                    <div key={t.id}
+                      title={`${t.name} — ${t.accuracy}% (${t.correct}/${t.attempts})`}
+                      style={{
+                        width: Math.min(64, 26 + t.attempts * 3), height: 26,
+                        background: heatColor(t.accuracy), opacity: Math.min(1, 0.45 + t.attempts * 0.1),
+                        borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, color: '#0b0f1a', fontWeight: 700, cursor: 'default'
+                      }}>
+                      {t.accuracy}%
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -112,4 +153,10 @@ export default function Analytics() {
       )}
     </StudentLayout>
   )
+}
+
+// Smooth red(0%) -> amber(50%) -> green(100%) hue ramp for the heatmap tiles.
+function heatColor(pct) {
+  const p = Math.max(0, Math.min(100, pct ?? 0))
+  return `hsl(${Math.round(p * 1.2)}, 70%, 50%)`
 }

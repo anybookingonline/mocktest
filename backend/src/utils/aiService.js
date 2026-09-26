@@ -267,18 +267,23 @@ async function callGemini({ model, system, messages, parts = [], json = false, t
   const m = model || await getConfig('gemini.model', PROVIDERS.gemini.defaultModel)
   const url = `${PROVIDERS.gemini.base}/models/${m}:generateContent?key=${apiKey}`
 
-  const contentParts = []
-  if (system) contentParts.push({ text: system + '\n\n' + (messages?.[0]?.content || '') })
-  else if (messages?.length) contentParts.push({ text: messages.map(x => `${x.role}: ${x.content}`).join('\n') })
-  for (const p of parts || []) contentParts.push(p)
-  if (imageData) {
-    contentParts.push({ inline_data: { mime_type: mimeType || 'image/png', data: imageData } })
-  }
+  // Real multi-turn: one Content per message (role user/model), not everything
+  // collapsed into a single turn — needed for threaded conversations (e.g. the
+  // Socratic tutor's hint-by-hint follow-ups, where the model must see its own
+  // earlier hints to avoid repeating them).
+  const contents = (messages || []).map((x) => ({
+    role: x.role === 'assistant' || x.role === 'model' ? 'model' : 'user',
+    parts: [{ text: x.content }]
+  }))
+  if (!contents.length) contents.push({ role: 'user', parts: [{ text: '' }] })
+  for (const p of parts || []) contents[contents.length - 1].parts.push(p)
+  if (imageData) contents[contents.length - 1].parts.push({ inline_data: { mime_type: mimeType || 'image/png', data: imageData } })
 
   const payload = {
-    contents: [{ role: 'user', parts: contentParts }],
+    contents,
     generationConfig: { temperature }
   }
+  if (system) payload.systemInstruction = { parts: [{ text: system }] }
   if (json) payload.generationConfig.responseMimeType = 'application/json'
 
   // Bug fix: timeoutMs is a positional arg before the options object — passing

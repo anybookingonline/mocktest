@@ -344,6 +344,14 @@ CREATE TABLE IF NOT EXISTS doubts (
   status TEXT DEFAULT 'answered',
   created_at TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS'))
 );
+-- Socratic Tutor: a doubt can be a threaded hint conversation instead of one
+-- direct answer. parent_doubt_id links a follow-up ("still stuck") back to
+-- the original doubt so the AI sees the whole hint history; mode/hint_round
+-- distinguish a socratic thread from a normal one-shot direct answer.
+ALTER TABLE doubts ADD COLUMN IF NOT EXISTS parent_doubt_id INTEGER REFERENCES doubts(id) ON DELETE CASCADE;
+ALTER TABLE doubts ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'direct';
+ALTER TABLE doubts ADD COLUMN IF NOT EXISTS hint_round INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_doubts_parent ON doubts(parent_doubt_id);
 
 CREATE TABLE IF NOT EXISTS pdf_imports (
   id SERIAL PRIMARY KEY,

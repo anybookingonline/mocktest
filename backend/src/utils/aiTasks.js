@@ -119,11 +119,40 @@ export async function generateQuestionsWithAI({ exam, count = 5, subject = null,
   throw lastErr || new Error('AI generation failed')
 }
 
-export async function solveDoubtWithAI({ questionText, options, studentMessage, explanation }) {
-  // Mirror the student's language: Hinglish question → Hinglish answer,
-  // Hindi → Hindi, English → English. Never force a single language.
-  const system = `You are a friendly, expert exam coach for Indian competitive exams. Resolve the student's doubt about the question below. Be concise but complete: clarify the concept, show the reasoning, and give an easy memorisation tip if relevant.\n\nLANGUAGE RULE (follow strictly): Reply in EXACTLY the language the student's doubt is written in. If the student writes in Hinglish (Roman-script Hindi mixed with English), reply in natural Hinglish the same way. If the student writes in Hindi (Devanagari), reply fully in Hindi. If the student writes in English, reply fully in English. Never switch to a different language than the student used, and never mix scripts unless the student did.`
-  const user = `QUESTION:\n${questionText}\n${options?.length ? 'OPTIONS:\n' + options.join('\n') : ''}\n${explanation ? 'GIVEN EXPLANATION:\n' + explanation : ''}\n\nSTUDENT DOUBT:\n${studentMessage}`
+const DOUBT_LANGUAGE_RULE = `LANGUAGE RULE (follow strictly): Reply in EXACTLY the language the student's doubt is written in. If the student writes in Hinglish (Roman-script Hindi mixed with English), reply in natural Hinglish the same way. If the student writes in Hindi (Devanagari), reply fully in Hindi. If the student writes in English, reply fully in English. Never switch to a different language than the student used, and never mix scripts unless the student did.`
+
+// Socratic mode: never hand over the answer immediately. One small hint or
+// guiding question per turn, responding to what the student actually said
+// last (not a canned script) — until they ask outright or it's dragged on
+// too long, at which point it closes with the full solution so the student
+// is never left stuck forever.
+const SOCRATIC_MAX_HINT_ROUNDS = 3
+function socraticSystemPrompt(hintRound) {
+  const mustReveal = hintRound >= SOCRATIC_MAX_HINT_ROUNDS
+  return `You are a Socratic exam tutor. Guide the student to the answer themselves — do NOT give the final answer or full method upfront.
+- Give ONE small hint or a guiding question per reply (2-4 sentences) that responds specifically to what the student just said or tried. Never repeat a hint you already gave in this conversation.
+- If the student explicitly asks for the answer/solution outright ("just tell me", "give up", "answer bata do", "solution do"), give the full step-by-step solution and final answer right away, clearly and completely.
+- ${mustReveal ? `This is hint round ${hintRound} — the student has tried enough times. Give the full step-by-step solution and final answer now, so they don't stay stuck.` : `This is hint round ${hintRound} of at most ${SOCRATIC_MAX_HINT_ROUNDS} — keep guiding, don't reveal the answer yet unless they ask for it.`}
+${DOUBT_LANGUAGE_RULE}`
+}
+
+export async function solveDoubtWithAI({ questionText, options, studentMessage, explanation, mode = 'direct', thread = [], hintRound = 0 }) {
+  const questionBlock = `QUESTION:\n${questionText}\n${options?.length ? 'OPTIONS:\n' + options.join('\n') : ''}\n${explanation ? 'GIVEN EXPLANATION (reference only — in socratic mode, don\'t reveal until appropriate):\n' + explanation : ''}`
+
+  if (mode === 'socratic') {
+    const system = socraticSystemPrompt(hintRound)
+    const messages = [
+      { role: 'user', content: questionBlock },
+      ...thread.flatMap((t) => [{ role: 'user', content: t.message }, { role: 'assistant', content: t.ai_response }]),
+      { role: 'user', content: studentMessage }
+    ]
+    const res = await aiChat({ system, messages, json: false, action: 'doubt_solving_socratic' })
+    return res.data.trim()
+  }
+
+  // Direct mode (default): straight, complete answer.
+  const system = `You are a friendly, expert exam coach for Indian competitive exams. Resolve the student's doubt about the question below. Be concise but complete: clarify the concept, show the reasoning, and give an easy memorisation tip if relevant.\n\n${DOUBT_LANGUAGE_RULE}`
+  const user = `${questionBlock}\n\nSTUDENT DOUBT:\n${studentMessage}`
   const res = await aiChat({ system, messages: [{ role: 'user', content: user }], json: false, action: 'doubt_solving' })
   return res.data.trim()
 }
