@@ -454,6 +454,46 @@ export async function getVisionModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Photo Solver: student uploads a photo of a question (handwritten, textbook
+// page, or their own worked attempt) instead of typing it. One vision call
+// both transcribes the underlying question AND gives the first response
+// (direct answer or a Socratic first hint) — after that, any follow-up in the
+// same thread is plain text (via solveDoubtWithAI), since the model already
+// has the question in words. This avoids having to retain the photo itself:
+// consistent with voice doubts, the image is used once and not stored.
+// ---------------------------------------------------------------------------
+export async function visionSolvePhoto({ buffer, mimeType, studentMessage = '', mode = 'direct' }) {
+  const apiKey = await getConfig('gemini.apiKey')
+  if (!apiKey) throw new Error('Gemini API key not configured for photo doubt solving. Configure it in Admin > AI Config.')
+  const m = await getVisionModel()
+  const url = `${PROVIDERS.gemini.base}/models/${m}:generateContent?key=${apiKey}`
+
+  const prompt = `You are an expert exam tutor. Read the attached photo carefully — it may be a handwritten question, a textbook/notes page, or a student's own worked attempt (possibly with a mistake). It may be rotated, low-quality, or have glare; do your best.
+
+First, on a line starting with exactly "QUESTION:", transcribe the underlying question/problem in clear text (so it can be discussed further without the image again).
+Then, on a line starting with exactly "RESPONSE:", ${mode === 'socratic'
+    ? 'give ONE small guiding hint or question (2-4 sentences) — do NOT give the full answer yet, this is a Socratic tutoring session.'
+    : 'give the full step-by-step solution and final answer, concise but complete.'
+  }
+${studentMessage ? `The student also wrote: "${studentMessage}" — take this into account (e.g. if they're pointing at where they're stuck, or asking something specific).` : ''}
+Reply in English unless the student's own message above is in Hindi or Hinglish, in which case match that language for the RESPONSE line (the QUESTION line can stay in whatever language the photo itself is in).`
+
+  const payload = {
+    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mimeType || 'image/jpeg', data: buffer.toString('base64') } }, { text: prompt }] }],
+    generationConfig: { temperature: 0.3 }
+  }
+  const data = await postJsonWithRetry(url, {}, payload, 60000, { attempts: 3, baseDelayMs: 3000, label: 'gemini-vision-doubt' })
+  const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+
+  const qMatch = raw.match(/QUESTION:\s*([\s\S]*?)(?:\n+RESPONSE:|$)/i)
+  const rMatch = raw.match(/RESPONSE:\s*([\s\S]*)$/i)
+  return {
+    questionText: (qMatch?.[1] || '').trim() || 'Photo doubt',
+    response: (rMatch?.[1] || raw).trim()
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemini Batch Mode (Files API + Batch API) — ~50% cheaper than the normal
 // synchronous vision call above, but async (Google's target turnaround is
 // "up to 24h"). Used by routes/import.js's /pdf-batch route + background

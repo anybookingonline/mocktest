@@ -4,7 +4,7 @@ import { authRequired, adminOnly, platformOnly } from '../middleware/auth.js'
 import { authLimiter, aiLimiter } from '../middleware/rateLimit.js'
 import multer from 'multer'
 import { solveDoubtWithAI, explainQuestionWithAI, generateQuestionsWithAI, persistQuestions } from '../utils/aiTasks.js'
-import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS } from '../utils/aiService.js'
+import { getAiSettings, getFeatureFlags, transcribeAudio, getConfig, CUSTOM_PRESETS, visionSolvePhoto } from '../utils/aiService.js'
 import { getEntitlements, doubtCapFor } from '../utils/addons.js'
 import { awardPoints } from '../utils/points.js'
 import { getContextualAd, publicAdFields } from '../utils/monetize.js'
@@ -20,6 +20,15 @@ const voiceUpload = multer({
   fileFilter: (req, file, cb) => {
     if (/^audio\//.test(file.mimetype)) cb(null, true)
     else cb(new Error('Only audio files are allowed'))
+  }
+})
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\//.test(file.mimetype)) cb(null, true)
+    else cb(new Error('Only image files are allowed'))
   }
 })
 
@@ -56,6 +65,40 @@ router.get('/doubt-quota', async (req, res) => {
   })
 })
 
+// Guardrails for a NEW root doubt (institute pilot quota + per-user daily
+// cap). Shared by /doubt and /doubt-photo — Socratic follow-ups in an
+// existing thread skip this entirely (the thread's root already counted).
+// Returns null when OK, or the {status, body} to respond with when blocked.
+async function checkRootDoubtQuota(userId) {
+  // Pilot loss guardrail: per-institute daily AI quota (all students combined).
+  // Applies before per-user entitlement checks so a free-month pilot can never
+  // run an unbounded AI bill (docs/pricing-audit.md §3).
+  const instQuota = await checkInstituteAiQuota(userId)
+  if (!instQuota.ok) {
+    return { status: 429, body: { error: `Aaj aapke institute ka AI quota (${instQuota.quota} doubts) khatam ho gaya hai — kal subah phir try karo.`, quota: instQuota.quota, used: instQuota.used } }
+  }
+  // Unit-economics guard: every user gets a daily doubt cap by tier
+  // (free=monetization.freeDoubtsPerDay, paid=monetization.paidDoubtsPerDay
+  // soft-cap). Without this, every free account costs real AI money with
+  // zero revenue attached (see docs/pricing-audit.md). Only root doubts
+  // count — Socratic follow-ups don't re-check.
+  const entGuard = await getEntitlements(userId)
+  const cap = await doubtCapFor(entGuard)
+  const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND parent_doubt_id IS NULL AND created_at::date = current_date`).get(userId)
+  if (Number(used?.c) >= cap) {
+    return {
+      status: 402,
+      body: {
+        error: entGuard.aiPower || entGuard.retention
+          ? `Aaj ke ${cap} AI doubts (fair-use limit) khatam ho gaye — kal phir try karo. Priority support: support@aisepadho.com`
+          : `Aaj ke ${cap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo zyada doubts ke liye.`,
+        upgrade: entGuard.aiPower ? null : 'ai_power'
+      }
+    }
+  }
+  return null
+}
+
 // POST /api/ai/doubt - AI doubt solving for any question
 // body.mode: 'direct' (default, straight answer) | 'socratic' (hint-by-hint —
 // see solveDoubtWithAI). body.parentDoubtId: continue an existing Socratic
@@ -77,33 +120,8 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
       .all(req.user.id, rootId, rootId)
     root = thread[0]
   } else {
-    // Pilot loss guardrail: per-institute daily AI quota (all students combined).
-    // Applies before per-user entitlement checks so a free-month pilot can never
-    // run an unbounded AI bill (docs/pricing-audit.md §3).
-    const instQuota = await checkInstituteAiQuota(req.user.id)
-    if (!instQuota.ok) {
-      return res.status(429).json({
-        error: `Aaj aapke institute ka AI quota (${instQuota.quota} doubts) khatam ho gaya hai — kal subah phir try karo.`,
-        quota: instQuota.quota,
-        used: instQuota.used
-      })
-    }
-    // Unit-economics guard: every user gets a daily doubt cap by tier
-    // (free=monetization.freeDoubtsPerDay, paid=monetization.paidDoubtsPerDay
-    // soft-cap). Without this, every free account costs real AI money with
-    // zero revenue attached (see docs/pricing-audit.md). Only root doubts
-    // count — Socratic follow-ups (handled in the branch above) don't re-check.
-    const entGuard = await getEntitlements(req.user.id)
-    const cap = await doubtCapFor(entGuard)
-    const used = await db.prepare(`SELECT COUNT(*) c FROM doubts WHERE user_id = ? AND parent_doubt_id IS NULL AND created_at::date = current_date`).get(req.user.id)
-    if (Number(used?.c) >= cap) {
-      return res.status(402).json({
-        error: entGuard.aiPower || entGuard.retention
-          ? `Aaj ke ${cap} AI doubts (fair-use limit) khatam ho gaye — kal phir try karo. Priority support: support@aisepadho.com`
-          : `Aaj ke ${cap} free AI doubts khatam ho gaye — kal phir try karo, ya AI Power Pack lo zyada doubts ke liye.`,
-        upgrade: entGuard.aiPower ? null : 'ai_power'
-      })
-    }
+    const blocked = await checkRootDoubtQuota(req.user.id)
+    if (blocked) return res.status(blocked.status).json(blocked.body)
   }
 
   let q = null
@@ -156,6 +174,45 @@ router.post('/doubt', aiLimiter(), async (req, res) => {
       } catch { /* ads are best-effort */ }
     }
     res.json({ response, ad, doubtId: rec.lastInsertRowid, rootDoubtId: root ? root.id : rec.lastInsertRowid, mode: effMode, hintRound })
+  } catch (e) {
+    res.status(502).json({ error: 'AI request failed: ' + e.message })
+  }
+})
+
+// POST /api/ai/doubt-photo - Photo Solver: student uploads a photo of a
+// question (handwritten/textbook/their own attempt) instead of typing it.
+// Always starts a NEW root doubt (photos aren't threaded — see
+// visionSolvePhoto's comment: the model transcribes the question into text in
+// this one call, so any follow-up goes through the normal /doubt
+// parentDoubtId path with no image involved).
+router.post('/doubt-photo', aiLimiter(), photoUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Photo file required' })
+  const mode = req.body?.mode === 'socratic' ? 'socratic' : 'direct'
+  const message = String(req.body?.message || '')
+
+  const blocked = await checkRootDoubtQuota(req.user.id)
+  if (blocked) return res.status(blocked.status).json(blocked.body)
+
+  try {
+    const { questionText, response } = await visionSolvePhoto({
+      buffer: req.file.buffer, mimeType: req.file.mimetype, studentMessage: message, mode
+    })
+    const rec = await db.prepare(`INSERT INTO doubts (user_id, question_id, question_text, message, ai_response, model, mode, hint_round)
+      VALUES (?,?,?,?,?,?,?,0)`).run(req.user.id, null, questionText, message || '📷 (photo)', response, 'ai', mode)
+    await awardPoints(req.user.id, 'doubt_asked')
+    let ad = null
+    try {
+      const ent = await getEntitlements(req.user.id)
+      if (!ent.aiPower) {
+        ad = publicAdFields(await getContextualAd({
+          messages: [{ role: 'user', content: questionText }, { role: 'assistant', content: String(response).slice(0, 500) }],
+          sessionId: `doubt-${req.user.id}`,
+          user: { id: req.user.id },
+          device: { ua: req.headers['user-agent'] || '', ip: req.ip || '' }
+        }))
+      }
+    } catch { /* ads are best-effort */ }
+    res.json({ response, questionText, ad, doubtId: rec.lastInsertRowid, mode })
   } catch (e) {
     res.status(502).json({ error: 'AI request failed: ' + e.message })
   }

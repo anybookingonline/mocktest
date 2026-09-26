@@ -18,8 +18,10 @@ export default function Doubts() {
   const [ad, setAd] = useState(null) // contextual ad from the latest tutor answer (free users)
   const [quota, setQuota] = useState(null) // { capped, limit, used, remaining } | { unlimited }
   const [hintMode, setHintMode] = useState(false) // Socratic tutor: hints instead of a direct answer
+  const [photoBusy, setPhotoBusy] = useState(false)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
+  const photoRef = useRef(null)
 
   const loadQuota = () => api.get('/ai/doubt-quota').then(setQuota).catch(() => {})
 
@@ -60,6 +62,24 @@ export default function Doubts() {
       load()
       loadQuota()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  // ---- photo solver (camera/gallery -> /ai/doubt-photo) --------------------
+  const askPhoto = async (file) => {
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      const d = await api.upload('/ai/doubt-photo', file, { mode: hintMode ? 'socratic' : 'direct', message: msg }, { silentAuth: true })
+      if (!d) { toast('Session expire ho gaya — login karke dobara try karo', 'err'); return }
+      setAd(d.ad || null)
+      toast(hintMode ? 'Hint from AI tutor' : 'Solved by AI tutor', 'ok')
+      setMsg('')
+      load()
+      loadQuota()
+    } catch (e) { toast(e.message, 'err') } finally {
+      setPhotoBusy(false)
+      if (photoRef.current) photoRef.current.value = ''
+    }
   }
 
   // ---- voice recording (MediaRecorder -> /ai/transcribe -> /ai/doubt) ------
@@ -170,6 +190,17 @@ export default function Doubts() {
           ) : flags.voiceDoubts ? (
             <Link to="/retention" className="btn btn-ghost" style={{ fontSize: 20, width: 52 }} title="Voice Doubts add-on chahiye — tap to unlock">🔒</Link>
           ) : null}
+          <input ref={photoRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+            onChange={(e) => askPhoto(e.target.files?.[0])} />
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 20, width: 52 }}
+            onClick={() => photoRef.current?.click()}
+            disabled={busy || photoBusy}
+            title="Photo se doubt solve karo — question ki photo kheecho ya gallery se chuno"
+          >
+            {photoBusy ? '…' : '📷'}
+          </button>
           <button className="btn btn-accent" onClick={() => ask()} disabled={busy || transcribing || !msg.trim()}>
             {busy || transcribing ? 'Thinking…' : 'Ask AI Tutor'}
           </button>
@@ -180,6 +211,7 @@ export default function Doubts() {
         </label>
         {recording && <p className="tiny mt" style={{ color: 'var(--red)' }}>🔴 Recording… apna doubt bolo, phir ⏹ dabao</p>}
         {transcribing && <p className="tiny mt">✍️ Aapki baat text me convert ho rahi hai…</p>}
+        {photoBusy && <p className="tiny mt">📷 Photo padhi jaa rahi hai aur solve ho rahi hai…</p>}
         {flags.voiceDoubts && !flags.voiceUnlocked && (
           <p className="tiny mt">🎙️ Voice doubts ek paid add-on hai — <Link to="/retention">Plans page se unlock karo</Link>.</p>
         )}
